@@ -31,12 +31,14 @@
 
         <!-- Основная карточка -->
         <div class="bg-slate-800/80 border-2 rounded-2xl p-2 flex flex-col items-center shadow-2xl relative transition-all"
+             :style="{ width: cardSize + 'px' }"
              :class="store.answeringPlayerId === player.id ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.3)]' : 'border-slate-700/50'">
           
           <!-- Аватарка (Большая) -->
-          <div class="w-16 h-16 md:w-20 md:h-20 bg-slate-900 rounded-xl mb-2 flex items-center justify-center relative overflow-hidden ring-1 ring-slate-700">
+          <div :style="{ width: avatarSize + 'px', height: avatarSize + 'px' }" 
+               class="bg-slate-900 rounded-xl mb-1 flex items-center justify-center relative overflow-hidden ring-1 ring-slate-700 transition-all">
              <img v-if="player.avatar" :src="store.getAvatarUrl(player.avatar)" class="w-full h-full object-cover">
-             <MonitorPlay v-else class="w-8 h-8 text-slate-700" />
+             <MonitorPlay v-else :class="avatarSize < 60 ? 'w-5 h-5' : 'w-8 h-8'" class="text-slate-700" />
              <div v-if="store.answeringPlayerId === player.id" class="absolute inset-0 bg-gradient-to-t from-emerald-500/30 to-transparent"></div>
           </div>
 
@@ -89,6 +91,22 @@ import { MonitorPlay } from 'lucide-vue-next'
 
 const store = useGameStore()
 const isHost = computed(() => store.host?.id === store.user?.id)
+
+const cardSize = computed(() => {
+  const count = store.players.length;
+  if (count <= 4) return 140;
+  if (count <= 6) return 120;
+  if (count <= 8) return 100;
+  return 90; // Для 10+ игроков
+});
+
+const avatarSize = computed(() => {
+  const count = store.players.length;
+  if (count <= 4) return 80;
+  if (count <= 6) return 70;
+  if (count <= 8) return 60;
+  return 50;
+});
 
 const REACTIONS = ['😂', '🔥', '👏', '💀', '🤔', '😤']
 const reactionCooldown = ref(false)

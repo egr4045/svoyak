@@ -1,4 +1,24 @@
 const initialGameData = require('./initialData');
+const StandardHandler = require('./questions/StandardHandler');
+const PokerHandler = require('./questions/PokerHandler');
+const AmongUsHandler = require('./questions/AmongUsHandler');
+const SketchHandler = require('./questions/SketchHandler');
+const AuctionHandler = require('./questions/AuctionHandler');
+const CatHandler = require('./questions/CatHandler');
+const GlitchHandler = require('./questions/GlitchHandler');
+
+const HANDLERS = {
+  'text': new StandardHandler('text'),
+  'media': new StandardHandler('media'),
+  'text_input': new StandardHandler('text_input'),
+  'poker': new PokerHandler(),
+  'among_us': new AmongUsHandler(),
+  'sketch': new SketchHandler(),
+  'auction': new AuctionHandler(),
+  'cat': new CatHandler(),
+  'glitch': new GlitchHandler()
+};
+
 
 class GameState {
   constructor(roomCode, hostUser) {
@@ -146,57 +166,37 @@ class GameState {
     this.state.catTargetId = null;
     this.state.mediaState = { status: 'stopped', currentTime: 0 };
 
-    if (q.type === 'media') {
-       this.state.questionStatus = 'buzzer_active';
-       this.state.buzzerReceiving = true;
-       this.state.buzzerResults = [];
-       this.addLog(`Активирован медиа-вопрос! Баззер включен.`, 'info');
-    } else if (q.type === 'text_input') {
-      this.state.questionStatus = 'text_inputting';
-    } else if (q.type === 'glitch') {
-      this.state.questionStatus = 'buzzer_active';
-      this.state.glitchSeed = Math.floor(Math.random() * 1000000);
-      this.state.buzzerReceiving = true;
-      this.state.buzzerResults = [];
-      this.addLog(`Активирован Glitch-вопрос!`, 'warning');
-    } else if (q.type === 'sketch') {
-      this.state.questionStatus = 'sketch_drawing';
-      this.state.sketchAnswers = {};
-      this.state.sketchVotes = {};
-      this.addLog(`Активирован вопрос-скетч!`, 'warning');
-    } else if (q.type === 'poker') {
-      this.state.questionStatus = 'poker_bidding';
-      const initialBet = Math.floor(q.points / 5);
-      
-      this.state.pokerActivePlayers = this.state.players.map(p => p.id);
-      this.state.pokerBets = {};
-      this.state.players.forEach(p => {
-        this.state.pokerBets[p.id] = initialBet;
-      });
-      this.state.pokerCurrentBet = initialBet;
-      this.state.pokerTurnIdx = 0;
-      this.state.pokerPlayersActed = [];
-      this.addLog(`Вопрос-Покер! Принудительная базовая ставка: ${initialBet}`, 'warning');
-    } else if (q.type === 'among_us') {
-      this.state.questionStatus = 'text_inputting';
-      if (this.state.players.length > 0) {
-        const randomIdx = Math.floor(Math.random() * this.state.players.length);
-        this.state.imposterId = this.state.players[randomIdx].id;
-      }
-      this.state.amongUsTimerState = null;
-      this.addLog(`Амогус! Шпион среди нас.`, 'error');
-    } else if (q.type === 'cat') {
-      this.state.questionStatus = 'cat_target_selection';
-    } else if (q.type === 'auction') {
-      this.state.questionStatus = 'auction_bidding';
-      // Implement initial bet per requirements 1/5
-      this.state.activeBet = Math.ceil(q.points / 5);
-      this.addLog(`Аукцион! Начальная ставка: ${this.state.activeBet}`, 'warning');
-    } else {
-      this.state.questionStatus = 'reading';
-    }
-    this.addLog(`Выбран вопрос: ${this.state.board[catIdx].category} за ${q.points}`, 'info');
+    const handler = HANDLERS[q.type] || HANDLERS['text'];
+    handler.onSelect(this, q);
   }
+
+  getHandler() {
+    const q = this.getCurrentQuestion();
+    if (!q) return null;
+    return HANDLERS[q.type] || HANDLERS['text'];
+  }
+
+  handleAction(action, data, context) {
+    const handler = this.getHandler();
+    if (handler) {
+      handler.handleAction(this, action, data, context);
+    }
+  }
+
+  correctAnswer(context) {
+    const handler = this.getHandler();
+    if (handler) {
+      handler.onCorrect(this, context);
+    }
+  }
+
+  wrongAnswer(context) {
+    const handler = this.getHandler();
+    if (handler) {
+      handler.onWrong(this, context);
+    }
+  }
+
 
   clearTimers() {
     for (const key in this.timers) {
@@ -271,91 +271,7 @@ class GameState {
     // Не меняем статус полностью, просто добавляем подсветку
   }
 
-  pokerAction(playerId, action, amount = 0) {
-    if (this.state.questionStatus !== 'poker_bidding') return;
-    const activeIdx = this.state.pokerTurnIdx;
-    const activePlayerId = this.state.pokerActivePlayers[activeIdx];
-    
-    if (playerId !== activePlayerId) return;
 
-    const q = this.getCurrentQuestion();
-    const playerName = this.state.players.find(p=>p.id===playerId)?.name;
-    
-    if (action === 'fold') {
-      // Баг #2: убираем игрока из активных, НЕ добавляем в pokerPlayersActed
-      // (сфолдивший не участвует в проверке allActed)
-      this.state.pokerActivePlayers.splice(activeIdx, 1);
-      this.addLog(`Игрок ${playerName} спасовал.`, 'info');
-      // Индекс не двигаем явно: после splice следующий элемент занял текущую позицию,
-      // но если удалили последнего — сбрасываем на начало
-      if (this.state.pokerTurnIdx >= this.state.pokerActivePlayers.length) {
-        this.state.pokerTurnIdx = 0;
-      }
-    } else if (action === 'call') {
-      this.state.pokerBets[playerId] = this.state.pokerCurrentBet;
-      this.addLog(`Игрок ${playerName} коллировал (${this.state.pokerCurrentBet}).`, 'info');
-      this.state.pokerPlayersActed.push(playerId);
-      this.state.pokerTurnIdx = (this.state.pokerTurnIdx + 1) % this.state.pokerActivePlayers.length;
-    } else if (action === 'raise') {
-      // Баг #1: newTotal считаем так же как на клиенте: pokerCurrentBet + amount
-      // (клиент отправляет шаг рейза, а не итоговую сумму)
-      const newTotal = this.state.pokerCurrentBet + amount;
-      const player = this.state.players.find(p=>p.id===playerId);
-      const maxAllowedTotal = Math.max(q.points, player ? player.score : 0);
-      
-      if (newTotal <= maxAllowedTotal && amount > 0) {
-        this.state.pokerCurrentBet = newTotal;
-        this.state.pokerBets[playerId] = newTotal;
-        this.state.pokerPlayersActed = [playerId]; // Сбрасываем acted, т.к. ставка выросла
-        this.addLog(`Игрок ${playerName} поднял ставку на ${amount}. Текущая ставка: ${newTotal}`, 'warning');
-        this.state.pokerTurnIdx = (this.state.pokerTurnIdx + 1) % this.state.pokerActivePlayers.length;
-      }
-    }
-
-    // Баг #3: если остался один — списываем очки только у проигравших (НЕ у победителя)
-    // и НЕ списываем повторно в блоке allEqual&&allActed (return сразу)
-    if (this.state.pokerActivePlayers.length === 1) {
-      const winnerId = this.state.pokerActivePlayers[0];
-      // Списываем ставки у всех кто участвовал (кроме победителя)
-      for (const [pId, bet] of Object.entries(this.state.pokerBets)) {
-        if (pId !== winnerId && this.state.players.find(p => p.id === pId)) {
-          this.adjustScore(pId, -bet);
-        }
-      }
-      // Победитель получает только чужие ставки (свою он не платит, т.к. ответа не было)
-      const othersBets = Object.entries(this.state.pokerBets)
-        .filter(([pId]) => pId !== winnerId)
-        .reduce((sum, [, bet]) => sum + bet, 0);
-      this.adjustScore(winnerId, othersBets);
-      const totalPot = Object.values(this.state.pokerBets).reduce((a,b)=>a+b, 0);
-      this.addLog(`Все спасовали! Игрок ${this.state.players.find(p=>p.id===winnerId)?.name} забирает банк ${totalPot} очков без ответа!`, 'success');
-      this.closeQuestion();
-      return;
-    }
-
-    let allEqual = true;
-    for (let id of this.state.pokerActivePlayers) {
-      if (this.state.pokerBets[id] !== this.state.pokerCurrentBet) {
-        allEqual = false; break;
-      }
-    }
-
-    const allActed = this.state.pokerActivePlayers.every(id => this.state.pokerPlayersActed.includes(id));
-
-    if (allEqual && allActed) {
-      // Списываем ставки у всех оставшихся активных игроков
-      for (const pId of this.state.pokerActivePlayers) {
-        const bet = this.state.pokerBets[pId] || 0;
-        if (this.state.players.find(p => p.id === pId)) {
-          this.adjustScore(pId, -bet);
-        }
-      }
-      const totalPot = Object.values(this.state.pokerBets).reduce((a,b)=>a+b, 0);
-      this.state.activeBet = totalPot;
-      this.state.questionStatus = 'text_inputting';
-      this.addLog(`Торги завершены! В банке ${totalPot} очков. Ожидание ответов оставшихся игроков.`, 'system');
-    }
-  }
 }
 
 module.exports = GameState;
