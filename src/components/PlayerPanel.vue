@@ -5,6 +5,7 @@
     <div class="flex justify-center gap-4 md:gap-8 w-full flex-wrap">
       <div v-for="player in store.players" :key="player.id"
            class="flex flex-col items-center transition-all duration-300 relative"
+           @contextmenu="onPlayerContextMenu(player, $event, 'player')"
            :class="{
              'scale-110 z-20': store.answeringPlayerId === player.id,
              'opacity-50 scale-95 grayscale-[0.3]': store.answeringPlayerId !== null && store.answeringPlayerId !== player.id
@@ -34,11 +35,14 @@
              :style="{ width: cardSize + 'px' }"
              :class="store.answeringPlayerId === player.id ? 'border-emerald-500 shadow-[0_0_25px_rgba(16,185,129,0.3)]' : 'border-slate-700/50'">
           
-          <!-- Аватарка (Большая) -->
-          <div :style="{ width: avatarSize + 'px', height: avatarSize + 'px' }" 
-               class="bg-slate-900 rounded-xl mb-1 flex items-center justify-center relative overflow-hidden ring-1 ring-slate-700 transition-all">
+          <!-- Аватарка (Большая) + живая камера из звонка -->
+          <div :style="{ width: avatarSize + 'px', height: avatarSize + 'px' }"
+               class="bg-slate-900 rounded-xl mb-1 flex items-center justify-center relative overflow-hidden transition-all"
+               :class="voiceOf(player)?.speaking ? 'ring-2 ring-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.5)]' : 'ring-1 ring-slate-700'">
              <img v-if="player.avatar" :src="store.getAvatarUrl(player.avatar)" class="w-full h-full object-cover">
              <MonitorPlay v-else :class="avatarSize < 60 ? 'w-5 h-5' : 'w-8 h-8'" class="text-slate-700" />
+             <PlayerVideo v-if="player.platformId && voiceOf(player)?.camOn" :account-id="player.platformId" />
+             <div v-if="voiceOf(player) && !voiceOf(player).micOn" class="absolute bottom-0.5 right-0.5 z-20 text-[10px] bg-slate-950/80 rounded px-0.5" title="Микрофон выключен">🔇</div>
              <div v-if="store.answeringPlayerId === player.id" class="absolute inset-0 bg-gradient-to-t from-emerald-500/30 to-transparent"></div>
           </div>
 
@@ -69,8 +73,21 @@
       </div>
     </div>
 
+    <!-- Полоса наблюдателей -->
+    <div v-if="store.spectators.length" class="flex items-center gap-2 mt-1 bg-slate-900/60 border border-slate-700/40 rounded-xl px-3 py-1.5">
+      <span class="text-[10px] font-black uppercase tracking-widest text-slate-500">👁 {{ store.spectators.length }} набл.</span>
+      <div v-for="s in store.spectators" :key="s.id"
+           class="w-7 h-7 bg-slate-800 rounded-lg overflow-hidden border flex items-center justify-center text-[10px] font-bold text-slate-400 cursor-default"
+           :class="voiceOf(s)?.speaking ? 'border-emerald-400' : 'border-slate-700'"
+           :title="s.name"
+           @contextmenu="onPlayerContextMenu(s, $event, 'spectator')">
+        <img v-if="s.avatar" :src="store.getAvatarUrl(s.avatar)" class="w-full h-full object-cover">
+        <span v-else>{{ s.name.charAt(0).toUpperCase() }}</span>
+      </div>
+    </div>
+
     <!-- Панель эмоций для игроков -->
-    <div v-if="store.gameStarted && !isHost" class="flex gap-2 mt-1">
+    <div v-if="store.gameStarted && !isHost && !store.isSpectator" class="flex gap-2 mt-1">
       <button v-for="emoji in REACTIONS" :key="emoji"
         @click="sendReaction(emoji)"
         :disabled="reactionCooldown"
@@ -87,10 +104,24 @@
 <script setup>
 import { reactive, computed, ref } from 'vue'
 import { useGameStore } from '../stores/game'
+import { usePlatformStore } from '../stores/platform'
+import { showParticipantMenu } from '../platform/contextMenu'
+import PlayerVideo from './PlayerVideo.vue'
 import { MonitorPlay } from 'lucide-vue-next'
 
 const store = useGameStore()
+const platform = usePlatformStore()
 const isHost = computed(() => store.host?.id === store.user?.id)
+
+// Участник голосового звонка для карточки (или null)
+function voiceOf(p) {
+  return p?.platformId ? platform.participantFor(p.platformId) : null
+}
+
+function onPlayerContextMenu(target, event, role) {
+  // Если пунктов нет (гость, не ведущий) — отдаём браузеру родное меню
+  showParticipantMenu(target, event, role)
+}
 
 const cardSize = computed(() => {
   const count = store.players.length;

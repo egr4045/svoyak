@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { io } from 'socket.io-client'
+import { usePlatformStore } from './platform'
 
 export const useGameStore = defineStore('game', {
   state: () => ({
@@ -20,6 +21,8 @@ export const useGameStore = defineStore('game', {
     currentRoundIndex: 0,
     board: [],
     players: [],
+    spectators: [],
+    maxPlayers: 8,
     activeCell: null,
     showAnswer: false,
     questionStatus: 'idle',
@@ -59,7 +62,12 @@ export const useGameStore = defineStore('game', {
     currentCategoryName: (state) => {
       if (!state.activeCell || !state.board || !state.board.length) return ''
       return state.board[state.activeCell.catIdx].category
-    }
+    },
+    isSpectator: (state) => {
+      if (!state.user) return false
+      return state.spectators.some(s => String(s.id) === String(state.user.id))
+    },
+    seatsFree: (state) => Math.max(0, state.maxPlayers - state.players.length)
   },
 
   actions: {
@@ -126,6 +134,14 @@ export const useGameStore = defineStore('game', {
     },
 
     logout() {
+      // Уходим из голосовой комнаты и чистим статус активности,
+      // но НЕ трогаем платформенную сессию хаба — она переживает выход из комнаты
+      try {
+        const platform = usePlatformStore();
+        platform.leaveVoice();
+        platform.setActivity(null);
+        platform.spectateIntent = false;
+      } catch { /* платформа не инициализирована — ок */ }
       this.token = null;
       this.user = null;
       this.roomCode = null;
@@ -166,10 +182,14 @@ export const useGameStore = defineStore('game', {
       });
     },
 
-    async createRoom() {
+    async createRoom(maxPlayers) {
       const res = await fetch(`${this.API_URL}/api/rooms`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${this.token}` }
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`
+        },
+        body: JSON.stringify({ maxPlayers: maxPlayers || 8 })
       });
       if (!res.ok) throw new Error('Create room failed');
       const data = await res.json();
@@ -198,7 +218,15 @@ export const useGameStore = defineStore('game', {
       this.socket.on('connect', () => {
         this.connected = true;
         if (this.roomCode) {
-          this.socket.emit('room:join', this.roomCode);
+          let spectate = false;
+          try {
+            const platform = usePlatformStore();
+            spectate = platform.spectateIntent;
+            // Намерение одноразовое: дальше роль хранит сервер (реджойн её не меняет),
+            // а следующая комната не должна унаследовать «наблюдателя»
+            platform.spectateIntent = false;
+          } catch { /* ок */ }
+          this.socket.emit('room:join', this.roomCode, { spectate });
         }
       });
 
@@ -221,6 +249,8 @@ export const useGameStore = defineStore('game', {
         this.currentRoundIndex = newState.currentRoundIndex;
         this.board = newState.board;
         this.players = newState.players;
+        this.spectators = newState.spectators || [];
+        this.maxPlayers = newState.maxPlayers || 8;
         this.activeCell = newState.activeCell;
         this.showAnswer = newState.showAnswer;
         this.questionStatus = newState.questionStatus;
@@ -316,6 +346,9 @@ export const useGameStore = defineStore('game', {
     judgeSingleTextAnswer(playerId, isCorrect) { this.socket?.emit('host:judgeSingleTextAnswer', { playerId, isCorrect }) },
     resetGame() { this.socket?.emit('host:resetGame') },
     pauseGlitch() { this.socket?.emit('player:pauseGlitch') },
-    sendReaction(emoji) { this.socket?.emit('player:sendReaction', { emoji }) }
+    sendReaction(emoji) { this.socket?.emit('player:sendReaction', { emoji }) },
+    makeSpectator(playerId) { this.socket?.emit('host:makeSpectator', playerId) },
+    promoteSpectator(spectatorId) { this.socket?.emit('host:promoteSpectator', spectatorId) },
+    takeSeat() { this.socket?.emit('spectator:takeSeat') }
   }
 })

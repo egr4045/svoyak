@@ -33,12 +33,12 @@
       </div>
 
       <!-- Динамический контент по типам вопросов -->
-      <component :is="QuestionComponents[store.currentQuestion.type] || QuestionStandard" 
+      <component :is="QuestionComponents[store.currentQuestion.type] || QuestionStandard"
                  class="flex-1 w-full"
-                 @pokerAction="v => store.pokerAction(v.action, v.amount)"
-                 @vote="v => store.currentQuestion.type === 'sketch' ? store.voteSketch(v) : store.voteAmongUs(v)"
-                 @submitSketch="v => store.submitSketch(v)"
-                 @submitBet="v => store.submitAuctionBet(v)"
+                 @pokerAction="v => !store.isSpectator && store.pokerAction(v.action, v.amount)"
+                 @vote="v => !store.isSpectator && (store.currentQuestion.type === 'sketch' ? store.voteSketch(v) : store.voteAmongUs(v))"
+                 @submitSketch="v => !store.isSpectator && store.submitSketch(v)"
+                 @submitBet="v => !store.isSpectator && store.submitAuctionBet(v)"
                  @pauseTimer="v => store.pauseAmongUsTimer(v)"
                  @resumeTimer="v => store.resumeAmongUsTimer(v)"
                  @awardWinner="v => store.awardSketchWinner(v)" />      <!-- Обычный блок ввода ответов (text_input / text_inputting / text_judging) -->
@@ -109,7 +109,7 @@
              </div>
           </div>
 
-          <div v-else-if="store.questionStatus === 'buzzer_active' && !isHost" @mousedown="handleScreenClick" class="absolute inset-0 z-50 rounded-3xl cursor-pointer flex flex-col justify-end items-center pb-8 group">
+          <div v-else-if="store.questionStatus === 'buzzer_active' && !isHost && !store.isSpectator" @mousedown="handleScreenClick" class="absolute inset-0 z-50 rounded-3xl cursor-pointer flex flex-col justify-end items-center pb-8 group">
             <template v-if="myBuzzerResult">
               <div class="absolute inset-0 rounded-3xl border-4 border-emerald-500/50 bg-emerald-900/40 pointer-events-none"></div>
               <div class="text-3xl font-black text-emerald-400 bg-emerald-950/90 px-12 py-4 rounded-full border border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.5)] pointer-events-none text-center">
@@ -124,7 +124,7 @@
             </template>
           </div>
           
-          <div v-else-if="store.questionStatus === 'buzzer_active' && isHost" class="flex flex-col items-center gap-2 py-4">
+          <div v-else-if="store.questionStatus === 'buzzer_active' && (isHost || store.isSpectator)" class="flex flex-col items-center gap-2 py-4">
              <div class="px-6 py-2 rounded-full border border-rose-500/30 bg-rose-500/10 text-rose-500 font-black animate-pulse flex items-center gap-2">
                 <BellRing class="w-5 h-5" /> 🚨 БАЗЗЕР АКТИВЕН — ЖДЕМ ОТКЛИКА
              </div>
@@ -256,6 +256,7 @@ const activePlayerName = computed(() => {
 
 const canIAnswer = computed(() => {
   if (isHost.value) return false;
+  if (store.isSpectator) return false;
   if (store.answeringPlayerId && store.answeringPlayerId !== store.user?.id) return false;
   
   // Для шпиона Амогуса (когда идет text_inputting)
@@ -330,6 +331,7 @@ function showCustomAlert(msg) {
 
 // Обработка кликов и клавиш (баззер)
 const handleScreenClick = () => {
+  if (store.isSpectator) return;
   if (store.questionStatus === 'buzzer_active' && !isHost.value && !myBuzzerResult.value) {
     const reactionTime = Date.now() - localBuzzerActiveTime.value;
     store.pressBuzzer(reactionTime);
@@ -337,6 +339,7 @@ const handleScreenClick = () => {
 }
 
 const handleKeydown = (e) => {
+  if (store.isSpectator) return;
   if (!isHost.value && e.code === 'Space' && store.questionStatus === 'buzzer_active' && !myBuzzerResult.value) {
     e.preventDefault();
     handleScreenClick();

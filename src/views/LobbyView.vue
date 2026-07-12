@@ -14,15 +14,22 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <!-- Список игроков -->
         <div>
-          <h3 class="text-xl font-bold mb-4">Участники ({{ store.players.length }})</h3>
+          <h3 class="text-xl font-bold mb-4">
+            Участники <span class="text-slate-400">({{ store.players.length }}/{{ store.maxPlayers }} мест)</span>
+          </h3>
           <div class="space-y-3">
-            <div v-for="p in store.players" :key="p.id" class="flex items-center justify-between bg-slate-800/50 p-3 rounded border border-slate-700">
+            <div v-for="p in store.players" :key="p.id"
+                 @contextmenu="showParticipantMenu(p, $event, 'player')"
+                 class="flex items-center justify-between bg-slate-800/50 p-3 rounded border transition-colors"
+                 :class="speakingIds.has(p.platformId) ? 'border-emerald-500/60' : 'border-slate-700'">
               <div class="flex items-center gap-3">
-                <div class="w-10 h-10 bg-slate-700 rounded-xl flex items-center justify-center font-bold overflow-hidden border border-slate-600">
+                <div class="w-10 h-10 bg-slate-700 rounded-xl flex items-center justify-center font-bold overflow-hidden border"
+                     :class="speakingIds.has(p.platformId) ? 'border-emerald-400' : 'border-slate-600'">
                   <img v-if="p.avatar" :src="store.getAvatarUrl(p.avatar)" class="w-full h-full object-cover">
                   <span v-else>{{ p.name.charAt(0).toUpperCase() }}</span>
                 </div>
                 <span class="font-medium" :class="{'text-slate-500': !p.connected}">{{ p.name }}</span>
+                <span v-if="voiceOf(p)" class="text-xs" :title="voiceOf(p).micOn ? 'В голосовом чате' : 'Микрофон выключен'">{{ voiceOf(p).micOn ? '🎙' : '🔇' }}</span>
               </div>
               <!-- Прогресс бар контента -->
               <div class="flex items-center gap-2 text-sm">
@@ -32,6 +39,42 @@
               </div>
             </div>
             <div v-if="store.players.length === 0" class="text-slate-500 italic">Ожидание игроков...</div>
+          </div>
+
+          <!-- Наблюдатели -->
+          <div v-if="store.spectators.length || store.isSpectator" class="mt-6">
+            <h3 class="text-lg font-bold mb-3 text-slate-400">👁 Наблюдатели ({{ store.spectators.length }})</h3>
+            <div class="space-y-2">
+              <div v-for="s in store.spectators" :key="s.id"
+                   @contextmenu="showParticipantMenu(s, $event, 'spectator')"
+                   class="flex items-center justify-between bg-slate-800/30 p-2.5 rounded border border-slate-700/60">
+                <div class="flex items-center gap-3">
+                  <div class="w-8 h-8 bg-slate-700 rounded-lg flex items-center justify-center text-sm font-bold overflow-hidden border border-slate-600">
+                    <img v-if="s.avatar" :src="store.getAvatarUrl(s.avatar)" class="w-full h-full object-cover">
+                    <span v-else>{{ s.name.charAt(0).toUpperCase() }}</span>
+                  </div>
+                  <span class="text-sm" :class="{'text-slate-500': !s.connected}">{{ s.name }}</span>
+                  <span v-if="voiceOf(s)" class="text-xs">{{ voiceOf(s).micOn ? '🎙' : '🔇' }}</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <button v-if="s.id === store.user?.id" @click="store.takeSeat()"
+                          :disabled="store.seatsFree === 0"
+                          class="text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors"
+                          :class="store.seatsFree > 0
+                            ? 'text-emerald-400 border-emerald-500/40 bg-emerald-900/20 hover:bg-emerald-600 hover:text-white'
+                            : 'text-slate-600 border-slate-700 cursor-not-allowed'">
+                    {{ store.seatsFree > 0 ? '🎮 Занять место' : 'Мест нет' }}
+                  </button>
+                  <button v-else-if="isHost" @click="store.promoteSpectator(s.id)"
+                          :disabled="store.seatsFree === 0"
+                          class="text-xs text-indigo-400 hover:text-white border border-indigo-500/30 px-2 py-1 rounded bg-indigo-900/20 hover:bg-indigo-600 transition-colors"
+                          :class="{ 'opacity-40 cursor-not-allowed': store.seatsFree === 0 }">В игроки</button>
+                </div>
+              </div>
+            </div>
+            <p v-if="store.isSpectator" class="text-xs text-slate-500 italic mt-3">
+              Вы наблюдатель: видите игру и участвуете в голосовом чате, но не отвечаете на вопросы.
+            </p>
           </div>
         </div>
 
@@ -85,17 +128,45 @@
         </div>
       </div>
     </div>
+    <VoiceBar />
 </template>
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
+import { usePlatformStore } from '../stores/platform'
+import { showParticipantMenu } from '../platform/contextMenu'
+import VoiceBar from '../components/VoiceBar.vue'
 import { MonitorPlay, Upload, PlusCircle } from 'lucide-vue-next'
 
 const store = useGameStore()
+const platform = usePlatformStore()
 const router = useRouter()
 const route = useRoute()
+
+// Кто сейчас говорит (по платформенным accountId)
+const speakingIds = computed(() => {
+  const set = new Set()
+  platform.voice.participants.forEach(p => { if (p.speaking) set.add(p.accountId) })
+  return set
+})
+
+function voiceOf(p) {
+  return p?.platformId ? platform.participantFor(p.platformId) : null
+}
+
+// Голос и активность — только ПОСЛЕ первого gameStateUpdated (host появился):
+// членство в комнате подтверждено сервером, а isSpectator уже отражает реальную роль
+// (важно при F5 и при ?spectate=1). Оба вызова — no-op без SDK/платформенной сессии.
+const voiceJoined = ref(false)
+watch(() => store.host, (h) => {
+  if (h && !voiceJoined.value) {
+    voiceJoined.value = true
+    platform.joinVoice(store.roomCode, { spectator: store.isSpectator })
+    platform.setActivity(store.roomCode)
+  }
+}, { immediate: true })
 
 const myAssetsLoaded = ref(false)
 const loadProgress = ref(0) // Имитация прогресса

@@ -8,6 +8,9 @@
   </head>
   <body>
     <div id="app"></div>
+    <!-- SDK платформы MyGame Hub (window.mygame). Файл появляется через `npm run sdk:sync`;
+         без него игра работает как раньше (404 безвреден). -->
+    <script src="/vendor/mygame-sdk.global.js"></script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

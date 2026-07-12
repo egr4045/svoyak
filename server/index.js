@@ -55,14 +55,21 @@ app.get('/api/avatar/:userId', (req, res) => {
 
 // Создание комнаты (HTTP)
 app.post('/api/rooms', authenticateToken, (req, res) => {
-  const code = roomManager.createRoom(req.user);
+  const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers });
   res.status(201).json({ roomCode: code });
 });
 
 app.get('/api/rooms/:code', authenticateToken, (req, res) => {
   const room = roomManager.getRoom(req.params.code);
   if (!room) return res.status(404).json({ error: 'Room not found' });
-  res.json({ roomCode: room.roomCode, host: room.host });
+  res.json({
+    roomCode: room.roomCode,
+    host: { id: room.state.host.id, username: room.state.host.username },
+    maxPlayers: room.state.maxPlayers,
+    playersCount: room.state.players.length,
+    spectatorsCount: room.state.spectators.length,
+    gameStarted: room.state.gameStarted
+  });
 });
 
 const server = http.createServer(app);

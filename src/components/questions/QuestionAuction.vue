@@ -9,7 +9,10 @@
          <p class="text-slate-400 text-sm max-w-[280px]">Сделайте ставку. Максимальная ставка определит, кто будет отвечать.</p>
       </div>
 
-      <div v-if="!store.auctionBets[store.user?.id]" class="flex flex-col gap-6">
+      <div v-if="store.isSpectator" class="py-8 flex flex-col items-center gap-4">
+         <p class="text-slate-400 text-sm font-medium uppercase tracking-widest animate-pulse">Игроки делают ставки… 👁</p>
+      </div>
+      <div v-else-if="!store.auctionBets[store.user?.id]" class="flex flex-col gap-6">
          <div class="relative group">
             <input type="number" v-model.number="myBet" class="w-full bg-black/40 border-2 border-white/5 rounded-2xl p-6 text-3xl font-black text-center text-amber-400 focus:border-amber-500/50 focus:ring-4 focus:ring-amber-500/10 transition-all outline-none" placeholder="0" />
             <span class="absolute right-6 top-1/2 -translate-y-1/2 text-slate-600 font-black">OЧКОВ</span>

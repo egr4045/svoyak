@@ -1,7 +1,10 @@
 <template>
   <div class="flex-1 flex flex-col items-center">
-    <div v-if="store.questionStatus === 'sketch_drawing'" class="w-full h-full max-h-[60vh] relative mb-12">
+    <div v-if="store.questionStatus === 'sketch_drawing' && !store.isSpectator" class="w-full h-full max-h-[60vh] relative mb-12">
       <SketchCanvas ref="sketchCanvas" @submit="submitSketch" />
+    </div>
+    <div v-else-if="store.questionStatus === 'sketch_drawing'" class="text-slate-400 text-lg italic py-16">
+      Игроки рисуют… 👁
     </div>
 
     <div v-if="store.questionStatus === 'sketch_judging'" class="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
@@ -13,7 +16,7 @@
             <span class="font-bold text-slate-300">{{ store.getPlayerById(pId)?.name }}</span>
             <div class="flex items-center gap-2">
                <span class="text-xs font-black text-slate-500">{{ Object.values(store.sketchVotes).filter(v => v === pId).length }}</span>
-               <button v-if="!isHost && store.user?.id !== pId" @click="vote(pId)" 
+               <button v-if="!isHost && !store.isSpectator && store.user?.id !== pId" @click="vote(pId)"
                        class="px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-[10px] font-black uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-all">Голосовать</button>
                <button v-if="isHost" @click="emit('awardWinner', pId)" 
                        class="px-3 py-1.5 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-500 hover:text-white transition-all">Победил</button>

@@ -46,6 +46,7 @@ const emit = defineEmits(['vote', 'pauseTimer', 'resumeTimer'])
 const isHost = computed(() => store.host?.id === store.user?.id)
 
 const vote = (targetId) => {
+  if (store.isSpectator) return
   if (store.questionStatus === 'among_us_voting') {
     emit('vote', targetId)
   }

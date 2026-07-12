@@ -10,6 +10,11 @@
     <div class="bg-slate-900 border border-slate-700/50 p-8 rounded-3xl shadow-2xl max-w-md w-full relative z-10 transition-colors duration-500" :class="activeTab === 'host' ? 'shadow-[0_0_40px_rgba(245,158,11,0.1)] border-t-amber-500/50' : 'shadow-[0_0_40px_rgba(37,99,235,0.1)] border-t-blue-500/50'">
       <h1 class="text-3xl font-black mb-8 text-center tracking-wider uppercase transition-colors duration-500" :class="activeTab === 'host' ? 'text-amber-500' : 'text-blue-500'">Своя Игра</h1>
 
+      <!-- Ошибка SSO платформы (протухший ?pt= и т.п.) -->
+      <p v-if="platform.platformAuthError" class="text-amber-400 text-xs text-center mb-6 font-bold bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+        ⚠ {{ platform.platformAuthError }}
+      </p>
+
       <!-- PLAYER TAB (Подключение по никнейму) -->
       <div v-if="activeTab === 'player'" class="space-y-6 animate-in fade-in duration-500">
         <div v-if="!store.user">
@@ -47,6 +52,13 @@
           </div>
           <div class="border-t border-slate-700/50 pt-6">
             <p v-if="roomError" class="text-rose-400 text-sm text-center mb-4 font-bold">{{ roomError }}</p>
+            <div class="flex items-center justify-between mb-4 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3">
+              <span class="text-xs text-slate-400 uppercase font-black tracking-widest">Мест для игроков</span>
+              <select v-model.number="maxPlayers" class="bg-slate-900 border border-slate-600 rounded-lg px-3 py-1 font-bold text-white outline-none focus:ring-2 focus:ring-amber-500">
+                <option v-for="n in [4, 6, 8, 10, 12, 16]" :key="n" :value="n">{{ n }}</option>
+              </select>
+            </div>
+            <p class="text-slate-500 text-[10px] text-center mb-4 italic">Кто придёт после заполнения мест — станет наблюдателем</p>
             <button @click="createRoom" class="w-full bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-black py-4 rounded-xl transition uppercase tracking-widest shadow-[0_0_20px_rgba(217,119,6,0.4)] hover:scale-[1.02]">
               🎯 Создать Игру
             </button>
@@ -70,8 +82,11 @@
 import { ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useGameStore } from '../stores/game'
+import { usePlatformStore } from '../stores/platform'
+import { joinIntent } from '../platform/boot'
 
 const store = useGameStore()
+const platform = usePlatformStore()
 const router = useRouter()
 
 const activeTab = ref('player') // 'player' | 'host'
@@ -80,10 +95,15 @@ const password = ref('')
 const roomCode = ref('')
 const error = ref('')
 const roomError = ref('')
+const maxPlayers = ref(8)
 
 onMounted(() => {
   if (store.user && !store.user.isGuest) {
     activeTab.value = 'host'
+  }
+  // Пришли из хаба по ?join=, но сессии не было — подставляем код комнаты
+  if (joinIntent.code && !roomCode.value) {
+    roomCode.value = joinIntent.code
   }
 })
 
@@ -93,7 +113,9 @@ watch(activeTab, () => {
   roomError.value = ''
   username.value = ''
   password.value = ''
-  roomCode.value = ''
+  // Префилл из ?join= не теряем: onMounted переключает вкладку, и этот
+  // watcher иначе стёр бы только что подставленный код комнаты
+  roomCode.value = joinIntent.code || ''
 })
 
 // Player Logic
@@ -115,7 +137,13 @@ async function joinRoomOnly() {
   if (roomCode.value.length < 4) { roomError.value = 'Код должен содержать 4 символа'; return; }
   try {
     roomError.value = ''
-    await store.checkRoom(roomCode.value.toUpperCase())
+    const info = await store.checkRoom(roomCode.value.toUpperCase())
+    // Предупреждаем, что мест нет — войдём наблюдателем (ведущего это не касается)
+    const iAmHost = info?.host && store.user && String(info.host.id) === String(store.user.id)
+    if (info && info.maxPlayers && !iAmHost && (info.playersCount >= info.maxPlayers || info.gameStarted)) {
+      platform.spectateIntent = true
+      platform.toast('Свободных мест нет — вы подключитесь как наблюдатель')
+    }
     router.push({ name: 'lobby', params: { id: store.roomCode } })
   } catch(e) { roomError.value = e.message || 'Комната не найдена' }
 }
@@ -140,7 +168,7 @@ async function register() {
 async function createRoom() {
   try {
     roomError.value = ''
-    const code = await store.createRoom()
+    const code = await store.createRoom(maxPlayers.value)
     router.push({ name: 'lobby', params: { id: code } })
   } catch(e) { roomError.value = e.message || 'Error creating room' }
 }

@@ -8,6 +8,9 @@
           Своя Игра <span class="text-blue-500/50 ml-2">|</span>
           <span class="text-base font-medium text-amber-500 ml-2">{{ store.roomCode }}</span>
         </h1>
+        <span v-if="store.isSpectator" class="text-xs font-black uppercase tracking-widest text-slate-300 bg-slate-800 border border-slate-600 rounded-full px-3 py-1">
+          👁 Вы наблюдатель
+        </span>
       </div>
       <div class="flex gap-3">
         <button v-if="isHost" @click="store.resetGame"
@@ -34,19 +37,23 @@
     </footer>
 
     <EventLog />
+    <VoiceBar />
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
+import { usePlatformStore } from '../stores/platform'
 import GameBoard from '../components/GameBoard.vue'
 import PlayerPanel from '../components/PlayerPanel.vue'
 import ActiveQuestion from '../components/ActiveQuestion.vue'
 import EventLog from '../components/EventLog.vue'
+import VoiceBar from '../components/VoiceBar.vue'
 
 const store = useGameStore()
+const platform = usePlatformStore()
 const router = useRouter()
 const route = useRoute()
 
@@ -60,6 +67,17 @@ onMounted(() => {
     store.initSocket();
   }
 })
+
+// F5 прямо в игре: голос переподключаем только после первого gameStateUpdated,
+// когда isSpectator уже отражает реальную роль (иначе наблюдатель войдёт с включённым микрофоном)
+const voiceJoined = ref(false)
+watch(() => store.host, (h) => {
+  if (h && !voiceJoined.value) {
+    voiceJoined.value = true
+    platform.joinVoice(store.roomCode, { spectator: store.isSpectator })
+    platform.setActivity(store.roomCode)
+  }
+}, { immediate: true })
 
 function leaveRoom() {
   store.logout();

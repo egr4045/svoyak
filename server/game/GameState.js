@@ -20,16 +20,26 @@ const HANDLERS = {
 };
 
 
+const DEFAULT_MAX_PLAYERS = 8;
+
+function clampMaxPlayers(value) {
+  const n = parseInt(value, 10);
+  if (Number.isNaN(n)) return DEFAULT_MAX_PLAYERS;
+  return Math.min(16, Math.max(2, n));
+}
+
 class GameState {
-  constructor(roomCode, hostUser) {
+  constructor(roomCode, hostUser, options = {}) {
     this.roomCode = roomCode;
-    this.state = this.getInitialState(hostUser);
+    this.state = this.getInitialState(hostUser, options);
     this.timers = {};
   }
 
-  getInitialState(hostUser) {
+  getInitialState(hostUser, options = {}) {
     return {
-      host: { id: hostUser.id, username: hostUser.username, socketId: null, connected: false },
+      host: { id: hostUser.id, username: hostUser.username, socketId: null, connected: false, platformId: hostUser.platformId || null },
+      maxPlayers: clampMaxPlayers(options.maxPlayers),
+      spectators: [], // { id, name, avatar, platformId, score, connected, socketId, loadedAssets }
       gameStarted: false,
       roundsData: JSON.parse(JSON.stringify(initialGameData)),
       currentRoundIndex: 0,
@@ -70,26 +80,80 @@ class GameState {
     if (this.state.eventLog.length > 50) this.state.eventLog.pop();
   }
 
+  makeParticipant(user) {
+    return {
+      id: user.id,
+      name: user.username,
+      avatar: user.avatar,
+      platformId: user.platformId || null,
+      score: 0,
+      connected: false,
+      socketId: null,
+      loadedAssets: false
+    };
+  }
+
   addPlayer(user) {
-    let p = this.state.players.find(x => x.id === user.id);
-    if (!p) {
-      p = { 
-        id: user.id, 
-        name: user.username, 
-        avatar: user.avatar, 
-        score: 0, 
-        connected: false, 
-        socketId: null,
-        loadedAssets: false 
-      };
-      this.state.players.push(p);
-      this.addLog(`Игрок ${user.username} присоединился к лобби.`, 'info');
+    const existing = this.state.players.find(x => x.id === user.id);
+    if (existing) return existing;
+    // Уже наблюдатель (например, переподключился) — роль не меняем
+    const spec = this.state.spectators.find(x => x.id === user.id);
+    if (spec) return spec;
+    // Мест нет или игра уже идёт — автоматически наблюдатель
+    if (this.state.players.length >= this.state.maxPlayers || this.state.gameStarted) {
+      return this.addSpectator(user);
     }
+    const p = this.makeParticipant(user);
+    this.state.players.push(p);
+    this.addLog(`Игрок ${user.username} присоединился к лобби.`, 'info');
     return p;
+  }
+
+  addSpectator(user) {
+    const asPlayer = this.state.players.find(x => x.id === user.id);
+    if (asPlayer) return asPlayer;
+    let s = this.state.spectators.find(x => x.id === user.id);
+    if (!s) {
+      s = this.makeParticipant(user);
+      this.state.spectators.push(s);
+      this.addLog(`Наблюдатель ${user.username} присоединился.`, 'info');
+    }
+    return s;
+  }
+
+  promoteSpectator(spectatorId) {
+    // Как и demotePlayer: смена роли только между вопросами, иначе ломается
+    // подсчёт голосов among_us / порядок хода в покере
+    if (this.state.gameStarted && this.state.questionStatus !== 'idle') return false;
+    if (this.state.players.length >= this.state.maxPlayers) return false;
+    const idx = this.state.spectators.findIndex(s => String(s.id) === String(spectatorId));
+    if (idx === -1) return false;
+    const [s] = this.state.spectators.splice(idx, 1);
+    this.state.players.push(s); // счёт сохраняется (возврат ранее разжалованного игрока)
+    this.addLog(`${s.name} теперь игрок.`, 'success');
+    return true;
+  }
+
+  demotePlayer(playerId) {
+    if (this.state.gameStarted && this.state.questionStatus !== 'idle') return false;
+    const idx = this.state.players.findIndex(p => String(p.id) === String(playerId));
+    if (idx === -1) return false;
+    const [p] = this.state.players.splice(idx, 1);
+    this.state.spectators.push(p);
+    if (String(this.state.selectingPlayerId) === String(playerId)) this.state.selectingPlayerId = null;
+    if (String(this.state.answeringPlayerId) === String(playerId)) this.state.answeringPlayerId = null;
+    this.addLog(`${p.name} теперь наблюдатель.`, 'warning');
+    return true;
+  }
+
+  findParticipant(userId) {
+    return this.state.players.find(x => x.id === userId)
+      || this.state.spectators.find(x => x.id === userId);
   }
 
   removePlayer(playerId) {
     this.state.players = this.state.players.filter(p => p.id !== playerId);
+    this.state.spectators = this.state.spectators.filter(s => s.id !== playerId);
     this.addLog(`Игрок удален из лобби.`, 'warning');
   }
 
@@ -99,7 +163,7 @@ class GameState {
       this.state.host.connected = isConnected;
       return;
     }
-    const p = this.state.players.find(x => x.id === userId);
+    const p = this.findParticipant(userId);
     if (p) {
       p.socketId = isConnected ? socketId : null;
       p.connected = isConnected;
@@ -107,8 +171,13 @@ class GameState {
   }
 
   setPlayerLoaded(userId, isLoaded) {
-    const p = this.state.players.find(x => x.id === userId);
+    const p = this.findParticipant(userId);
     if (p) p.loadedAssets = isLoaded;
+  }
+
+  hasConnectedMembers() {
+    if (this.state.host.connected) return true;
+    return this.state.players.some(p => p.connected) || this.state.spectators.some(s => s.connected);
   }
 
   startGame() {
@@ -254,6 +323,7 @@ class GameState {
     this.state.activeBet = null;
     this.state.buzzerResults = [];
     this.state.players.forEach(p => p.score = 0);
+    this.state.spectators.forEach(s => s.score = 0);
     this.state.gameStarted = false;
     this.state.currentRoundIndex = 0;
     this.addLog('Ведущий сбросил игру.', 'warning');
