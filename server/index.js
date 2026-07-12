@@ -97,6 +97,11 @@ io.on('connection', (socket) => {
   handleRoomEvents(io, socket, socket.user);
 });
 
+// Live player count for the platform orchestrator's idle reaper (stops the game when empty).
+app.get('/metrics', (req, res) => {
+  res.json({ players: io.engine.clientsCount });
+});
+
 // Обработка всех остальных маршрутов под фронтенд (SPA)
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(frontendPath, 'index.html'), (err) => {
