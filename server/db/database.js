@@ -32,6 +32,16 @@ const db = new sqlite3.Database(dbPath, (err) => {
         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
         message TEXT
       )`);
+
+      // Паки вопросов ведущего. data — JSON пака; created_at — epoch ms (для TTL 30 дней).
+      db.run(`CREATE TABLE IF NOT EXISTS packs (
+        id TEXT PRIMARY KEY,
+        owner_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_packs_owner ON packs(owner_id)`);
     });
   }
 });

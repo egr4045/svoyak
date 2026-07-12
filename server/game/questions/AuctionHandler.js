@@ -29,6 +29,18 @@ class AuctionHandler extends BaseQuestionHandler {
     }
   }
 
+  // Отвечает один назначенный победитель ставки: неверный ответ закрывает вопрос,
+  // а НЕ открывает общий баззер (в отличие от базовой логики)
+  onWrong(gameState, { io }) {
+    const q = gameState.getCurrentQuestion();
+    const points = gameState.state.activeBet !== null ? gameState.state.activeBet : q.points;
+    gameState.adjustScore(gameState.state.answeringPlayerId, -points);
+    gameState.state.answeringPlayerId = null;
+    gameState.state.showAnswer = true;
+    gameState.state.questionStatus = 'idle';
+    io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+  }
+
   revealAuctionBets(gameState, io) {
     if (gameState.state.questionStatus !== 'auction_bidding') return;
     

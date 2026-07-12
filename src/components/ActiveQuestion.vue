@@ -152,53 +152,8 @@
         </div>
       </div>
 
-      <!-- Фиксированная Панель Ведущего в нижней части -->
-      <div v-if="isHost" class="mt-auto border-t border-slate-800 pt-3 flex flex-col items-center w-full relative flex-shrink-0">
-        <div class="text-[10px] text-slate-500 uppercase tracking-widest mb-3 flex w-full justify-between items-center relative gap-4">
-          <div class="flex-1 h-px bg-slate-800"></div>
-          <span class="bg-slate-900 px-4 whitespace-nowrap">Управление Ведущего</span>
-          <div class="flex-1 h-px bg-slate-800"></div>
-        </div>
-        
-        <div class="flex gap-2 flex-wrap justify-center w-full mb-3">
-          <!-- Кнопка Медиа (если есть аудио/видео) -->
-          <button v-if="store.currentQuestion?.mediaType === 'audio' || store.currentQuestion?.mediaType === 'video'" 
-                  @click="store.controlMedia({ status: store.mediaState?.status === 'playing' ? 'stopped' : 'playing' })" 
-                  class="py-2 px-6 rounded-xl border transition-all flex items-center gap-2 text-sm"
-                  :class="store.mediaState?.status === 'playing' ? 'bg-amber-600/20 border-amber-500 text-amber-500' : 'bg-blue-600 text-white border-blue-400 shadow-lg'">
-            <Play v-if="store.mediaState?.status !== 'playing'" class="w-4 h-4" />
-            <Square v-else class="w-4 h-4" />
-            {{ store.mediaState?.status === 'playing' ? 'Стоп' : 'Старт медиа' }}
-          </button>
-
-          <button @click="store.showAnswer = !store.showAnswer" class="py-2 px-6 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-all flex items-center gap-2 text-sm font-bold">
-            <Eye v-if="!store.showAnswer" class="w-4 h-4" />
-            <EyeOff v-else class="w-4 h-4" />
-            {{ store.showAnswer ? 'Скрыть ответ' : 'Ответ' }}
-          </button>
-          
-          <button v-if="store.questionStatus === 'reading'" @click="store.startBuzzer" class="py-2 px-8 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black transition-all shadow-lg flex items-center gap-2 text-sm">
-            <Play class="w-4 h-4" /> Пуск таймера
-          </button>
-          
-          <button v-if="store.questionStatus === 'answering'" @click="store.correctAnswer" class="py-2 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black transition-all shadow-lg flex items-center gap-2 text-sm">
-            <Check class="w-4 h-4" /> Да
-          </button>
-          
-          <button v-if="store.questionStatus === 'answering'" @click="store.wrongAnswer" class="py-2 px-8 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black transition-all shadow-lg flex items-center gap-2 text-sm">
-            <X class="w-4 h-4" /> Нет
-          </button>
-          
-          <button @click="store.closeQuestion" class="py-2 px-6 rounded-xl bg-slate-950 hover:bg-black text-rose-500 border border-rose-900/30 transition-all text-sm">
-            Закрыть
-          </button>
-        </div>
-
-        <!-- Дополнительные действия для текстовых вопросов -->
-        <div v-if="store.questionStatus === 'text_inputting'" class="mb-4">
-           <button @click="requestRevealTextAnswers" class="py-2 px-6 rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white transition-all text-xs font-bold uppercase tracking-wider">Вскрыть раньше времени</button>
-        </div>
-      </div>
+      <!-- Управление ведущего вынесено в докнутую HostPanel (внизу экрана):
+           пуск баззера, верно/неверно, вскрытие/рулетка для всех типов, медиа, закрыть. -->
 
       <Transition name="slide-up">
         <div v-show="store.showAnswer" class="mt-4 p-6 bg-slate-800/80 border-2 border-amber-500/30 rounded-2xl relative shadow-xl">

@@ -29,6 +29,12 @@ function handleRoomEvents(io, socket, user) {
     // Динамический guard: роль может смениться посреди сессии (promote/demote)
     const isPlayer = () => room.state.players.some(p => String(p.id) === String(user.id));
 
+    // Слушатели действий вешаем один раз на сокет: повторный room:join
+    // (дубль-emit / навигация) не должен навесить второй комплект обработчиков,
+    // иначе один клик хоста сработает несколько раз
+    if (socket._handlersBound) return;
+    socket._handlersBound = true;
+
     socket.on('disconnect', () => {
       // Устаревший сокет (вторая вкладка, поздний ping-timeout после переподключения)
       // не должен затирать живое соединение того же пользователя

@@ -34,12 +34,17 @@ class AmongUsHandler extends BaseQuestionHandler {
       gameState.state.questionStatus = 'among_us_voting';
       gameState.state.amongUsTimerState = { status: 'running', endsAt: Date.now() + 120000, timeLeft: 120 };
       gameState.state.amongUsVotes = {};
+      // Авто-вскрытие по истечении времени, чтобы голосование не зависало навсегда
+      gameState.timers.amongUsAuto = setTimeout(() => this.revealAmongUs(gameState, io), 120000);
       io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
     } else if (action === 'host:pauseAmongUsTimer') {
       gameState.state.amongUsTimerState = { status: 'paused', timeLeft: data.timeLeft };
+      if (gameState.timers.amongUsAuto) { clearTimeout(gameState.timers.amongUsAuto); delete gameState.timers.amongUsAuto; }
       io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
     } else if (action === 'host:resumeAmongUsTimer') {
       gameState.state.amongUsTimerState = { status: 'running', endsAt: Date.now() + data.timeLeft * 1000, timeLeft: data.timeLeft };
+      if (gameState.timers.amongUsAuto) clearTimeout(gameState.timers.amongUsAuto);
+      gameState.timers.amongUsAuto = setTimeout(() => this.revealAmongUs(gameState, io), data.timeLeft * 1000);
       io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
     } else if (action === 'player:voteAmongUs') {
       if (gameState.state.questionStatus !== 'among_us_voting') return;

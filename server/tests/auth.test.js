@@ -96,15 +96,51 @@ describe('Auth Logic', () => {
     });
   });
 
-  describe('POST /guest-login', () => {
-    const guestHandler = authRouter.stack.find(s => s.route?.path === '/guest-login').route.stack[0].handle;
+  describe('POST /platform-bridge (SSO-мост хаба — единственный вход)', () => {
+    const bridgeHandler = authRouter.stack.find(s => s.route?.path === '/platform-bridge').route.stack[0].handle;
 
-    test('should create a guest session', () => {
-      req.body = { username: 'Guesty' };
-      guestHandler(req, res);
+    afterEach(() => { delete global.fetch; });
+
+    test('401 если нет pt', async () => {
+      req.body = {};
+      await bridgeHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    test('валидный pt существующего юзера → token + platformId + platformSession', async () => {
+      req.body = { pt: 'valid-handoff' };
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ accountId: 'acc1', displayName: 'Hub User', accessToken: 'at', refreshToken: 'rt' })
+      });
+      db.get.mockImplementation((query, params, cb) => {
+        cb(null, { id: 5, username: 'Hub User', avatar: null, platform_id: 'acc1' });
+      });
+
+      await bridgeHandler(req, res);
+
+      expect(global.fetch).toHaveBeenCalledWith(expect.stringContaining('/auth/exchange'), expect.any(Object));
       expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-        user: expect.objectContaining({ username: 'Guesty', isGuest: true })
+        token: 'mock_token',
+        user: expect.objectContaining({ id: 5, platformId: 'acc1' }),
+        platformSession: expect.objectContaining({ accountId: 'acc1', accessToken: 'at' })
       }));
+    });
+
+    test('невалидный/протухший pt (exchange не-OK) → 403', async () => {
+      req.body = { pt: 'expired' };
+      global.fetch = jest.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
+
+      await bridgeHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(403);
+    });
+
+    test('auth-сервис недоступен → 502', async () => {
+      req.body = { pt: 'x' };
+      global.fetch = jest.fn().mockRejectedValue(new Error('network'));
+
+      await bridgeHandler(req, res);
+      expect(res.status).toHaveBeenCalledWith(502);
     });
   });
 });

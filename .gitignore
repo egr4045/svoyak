@@ -46,3 +46,5 @@ __screenshots__/
 server/*.log
 server/test_out.txt
 server/test-results.json
+# Загруженные медиа кастомных паков (на диске, переживают в volume)
+server/uploads/

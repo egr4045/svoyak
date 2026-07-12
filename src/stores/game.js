@@ -71,54 +71,9 @@ export const useGameStore = defineStore('game', {
   },
 
   actions: {
-    async register(username, password) {
-      const res = await fetch(`${this.API_URL}/auth/register`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      if (!res.ok) {
-        let msg = 'Registration failed';
-        try { const d = await res.json(); msg = d.error; } catch(e){}
-        throw new Error(msg);
-      }
-      const data = await res.json();
-      this.token = data.token;
-      this.user = data.user;
-      localStorage.setItem('token', this.token);
-    },
+    // Вход в игру — только через платформу MyGame Hub (см. src/platform/boot.js:
+    // POST /auth/platform-bridge). Локальных login/register/guest в клиенте нет.
 
-    async login(username, password) {
-      const res = await fetch(`${this.API_URL}/auth/login`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
-      if (!res.ok) {
-        let msg = 'Login failed';
-        try { const d = await res.json(); msg = d.error; } catch(e){}
-        throw new Error(msg);
-      }
-      const data = await res.json();
-      this.token = data.token;
-      this.user = data.user;
-      localStorage.setItem('token', this.token);
-    },
-
-    async guestLogin(username) {
-      const res = await fetch(`${this.API_URL}/auth/guest-login`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username })
-      });
-      if (!res.ok) {
-        let msg = 'Guest login failed';
-        try { const d = await res.json(); msg = d.error; } catch(e){}
-        throw new Error(msg);
-      }
-      const data = await res.json();
-      this.token = data.token;
-      this.user = data.user;
-      localStorage.setItem('token', this.token);
-    },
-    
     async fetchMe() {
       if (!this.token) return;
       try {
@@ -182,14 +137,14 @@ export const useGameStore = defineStore('game', {
       });
     },
 
-    async createRoom(maxPlayers) {
+    async createRoom(maxPlayers, packId) {
       const res = await fetch(`${this.API_URL}/api/rooms`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${this.token}`
         },
-        body: JSON.stringify({ maxPlayers: maxPlayers || 8 })
+        body: JSON.stringify({ maxPlayers: maxPlayers || 8, ...(packId ? { packId } : {}) })
       });
       if (!res.ok) throw new Error('Create room failed');
       const data = await res.json();
@@ -270,6 +225,8 @@ export const useGameStore = defineStore('game', {
         this.pokerPlayersActed = newState.pokerPlayersActed;
         this.imposterId = newState.imposterId;
         this.amongUsTimerState = newState.amongUsTimerState;
+        this.amongUsResult = newState.amongUsResult;
+        this.mediaState = newState.mediaState || { status: 'stopped', currentTime: 0 };
         this.revealedTextAnswers = newState.revealedTextAnswers;
         this.auctionBets = newState.auctionBets;
         this.catTargetId = newState.catTargetId;
@@ -307,7 +264,6 @@ export const useGameStore = defineStore('game', {
     selectQuestion(catIdx, qIdx) { this.socket?.emit('host:selectQuestion', { catIdx, qIdx }) },
     closeQuestion() { this.socket?.emit('host:closeQuestion') },
     adjustScore(playerId, amount) { this.socket?.emit('host:adjustScore', { playerId, amount }) },
-    setScore(playerId, amount) { this.socket?.emit('host:setScore', { playerId, amount }) },
     kickPlayer(playerId) { this.socket?.emit('host:kickPlayer', playerId) },
     startBuzzer() { this.socket?.emit('host:startBuzzer') },
     pressBuzzer(reactionTime) { this.socket?.emit('player:pressBuzzer', { reactionTime }) },
@@ -328,8 +284,6 @@ export const useGameStore = defineStore('game', {
       if (this.socket) this.socket.emit('host:revealAuctionBets');
     },
 
-    assignCatToPlayer(playerId) { this.socket?.emit('host:assignCatToPlayer', playerId) },
-    setAuctionWinner(playerId, betAmount) { this.socket?.emit('host:setAuctionWinner', { playerId, betAmount }) },
     submitTextAnswer(text) { this.socket?.emit('player:submitTextAnswer', { text }) },
     submitSketch(dataUrl) { this.socket?.emit('player:submitSketch', { dataUrl }) },
     voteSketch(targetPlayerId) { this.socket?.emit('player:voteSketch', targetPlayerId) },

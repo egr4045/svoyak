@@ -4,9 +4,9 @@
     <!-- Шапка -->
     <header class="shrink-0 pt-4 pb-3 px-8 w-full flex items-center justify-between border-b border-blue-900/30 bg-black/30 backdrop-blur-sm z-20">
       <div class="flex items-center gap-4">
-        <h1 class="text-xl font-bold tracking-wide text-slate-100 uppercase">
-          Своя Игра <span class="text-blue-500/50 ml-2">|</span>
-          <span class="text-base font-medium text-amber-500 ml-2">{{ store.roomCode }}</span>
+        <h1 class="text-xl font-bold tracking-wide text-hub-text uppercase">
+          Своя Игра <span class="text-hub-accent/40 ml-2">|</span>
+          <span class="text-base font-medium text-hub-accent ml-2">{{ store.roomCode }}</span>
         </h1>
         <span v-if="store.isSpectator" class="text-xs font-black uppercase tracking-widest text-slate-300 bg-slate-800 border border-slate-600 rounded-full px-3 py-1">
           👁 Вы наблюдатель
@@ -31,8 +31,9 @@
       <ActiveQuestion />
     </main>
     
-    <!-- Панель игроков: естественно внизу -->
-    <footer class="shrink-0 w-full z-30 py-3 px-6 bg-slate-900/80 border-t border-indigo-900/30 backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+    <!-- Панель ведущего (докнута над игроками) + панель игроков -->
+    <footer class="shrink-0 w-full z-40 flex flex-col gap-2 py-3 px-6 bg-hub-deep/80 border-t border-hub-border backdrop-blur-xl shadow-[0_-10px_40px_rgba(0,0,0,0.5)]">
+      <HostPanel />
       <PlayerPanel />
     </footer>
 
@@ -49,6 +50,7 @@ import { usePlatformStore } from '../stores/platform'
 import GameBoard from '../components/GameBoard.vue'
 import PlayerPanel from '../components/PlayerPanel.vue'
 import ActiveQuestion from '../components/ActiveQuestion.vue'
+import HostPanel from '../components/HostPanel.vue'
 import EventLog from '../components/EventLog.vue'
 import VoiceBar from '../components/VoiceBar.vue'
 

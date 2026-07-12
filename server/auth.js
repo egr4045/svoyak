@@ -113,17 +113,9 @@ router.post('/platform-bridge', async (req, res) => {
   });
 });
 
-// Гостевой вход (для Игроков)
-router.post('/guest-login', (req, res) => {
-  const { username } = req.body;
-  if (!username) {
-    return res.status(400).json({ error: 'Username is required' });
-  }
-  
-  const guestId = 'guest_' + Math.random().toString(36).substr(2, 9);
-  const token = jwt.sign({ id: guestId, username, isGuest: true }, JWT_SECRET, { expiresIn: '24h' });
-  res.json({ token, user: { id: guestId, username, isGuest: true, avatar: '/default-avatar.png' } });
-});
+// Гостевой вход удалён: вход в игру только через платформу MyGame Hub
+// (см. POST /platform-bridge выше). register/login оставлены дремлющими,
+// но без platformId к игре они не допускаются (гейт в index.js).
 
 // Middleware для HTTP
 const authenticateToken = (req, res, next) => {
@@ -140,10 +132,6 @@ const authenticateToken = (req, res, next) => {
 };
 
 router.get('/me', authenticateToken, (req, res) => {
-  if (req.user.isGuest) {
-    return res.json({ user: { id: req.user.id, username: req.user.username, isGuest: true, avatar: '/default-avatar.png' } });
-  }
-
   db.get('SELECT id, username, avatar, platform_id FROM users WHERE id = ?', [req.user.id], (err, user) => {
     if (err || !user) return res.status(404).json({ error: 'User not found' });
     res.json({ user: { id: user.id, username: user.username, avatar: user.avatar, platformId: user.platform_id || null } });

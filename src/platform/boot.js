@@ -53,11 +53,11 @@ export async function bootPlatform(router) {
         if (data.platformSession) adoptPlatformSession(data.platformSession)
       } else {
         platform.platformAuthError = res.status === 403
-          ? 'Сессия платформы истекла — запустите игру из хаба ещё раз или войдите вручную.'
-          : 'Платформа недоступна — войдите вручную.'
+          ? 'Сессия платформы истекла — запустите игру из MyGame Hub ещё раз.'
+          : 'Платформа недоступна, попробуйте позже.'
       }
     } catch {
-      platform.platformAuthError = 'Платформа недоступна — войдите вручную.'
+      platform.platformAuthError = 'Платформа недоступна, попробуйте позже.'
     }
   }
 
@@ -65,15 +65,18 @@ export async function bootPlatform(router) {
   initSdk()
   platform.init()
 
-  // 4. Автопереход в комнату, если есть намерение и сессия
-  if (joinIntent.code) {
-    try {
-      if (!game.user && game.token) await game.fetchMe()
-      if (game.user) {
+  // 4. Маршрутизация после входа (вход только через хаб)
+  if (!game.user && game.token) { try { await game.fetchMe() } catch { /* невалидный токен */ } }
+  if (game.user) {
+    if (joinIntent.code) {
+      try {
         await game.checkRoom(joinIntent.code)
         router.push({ name: 'lobby', params: { id: game.roomCode } })
-      }
-      // без сессии останемся на HomeView; joinIntent подхватится после ручного входа
-    } catch { /* комната не найдена — остаёмся на главной */ }
+      } catch { /* комната не найдена — останемся на лендинге */ }
+    } else {
+      // Хост пришёл из хаба без кода комнаты → кабинет ведущего
+      router.push({ name: 'host' })
+    }
   }
+  // Без сессии остаёмся на лендинге «Запусти из хаба»
 }

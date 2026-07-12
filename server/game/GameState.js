@@ -28,9 +28,18 @@ function clampMaxPlayers(value) {
   return Math.min(16, Math.max(2, n));
 }
 
+// Достаём массив раундов из объекта пака {rounds:[...]} или принимаем массив как есть
+function extractRounds(pack) {
+  if (Array.isArray(pack)) return pack;
+  if (pack && Array.isArray(pack.rounds)) return pack.rounds;
+  return initialGameData;
+}
+
 class GameState {
   constructor(roomCode, hostUser, options = {}) {
     this.roomCode = roomCode;
+    // Кастомный пак из кабинета ведущего (или встроенный дефолт)
+    this.pack = extractRounds(options.pack);
     this.state = this.getInitialState(hostUser, options);
     this.timers = {};
   }
@@ -41,7 +50,7 @@ class GameState {
       maxPlayers: clampMaxPlayers(options.maxPlayers),
       spectators: [], // { id, name, avatar, platformId, score, connected, socketId, loadedAssets }
       gameStarted: false,
-      roundsData: JSON.parse(JSON.stringify(initialGameData)),
+      roundsData: JSON.parse(JSON.stringify(this.pack || initialGameData)),
       currentRoundIndex: 0,
       board: [], // categories of the current round
       players: [], // { id, name, avatar, score, connected, socketId, loadedAssets }
@@ -189,7 +198,8 @@ class GameState {
 
   startRound() {
     this.state.questionStatus = 'idle';
-    this.addLog(`Начат раунд: ${this.state.roundsData[this.state.currentRoundIndex].name}`, 'system');
+    const r = this.state.roundsData[this.state.currentRoundIndex];
+    this.addLog(`Начат раунд: ${r.name || r.round || 'Раунд'}`, 'system');
   }
 
   nextRound() {
@@ -299,8 +309,8 @@ class GameState {
 
   resetGame() {
     this.clearTimers();
-    // Баг #7: пересоздаём roundsData из исходных данных, иначе вопросы остаются answered:true
-    this.state.roundsData = JSON.parse(JSON.stringify(initialGameData));
+    // Баг #7: пересоздаём roundsData из пака комнаты, иначе вопросы остаются answered:true
+    this.state.roundsData = JSON.parse(JSON.stringify(this.pack || initialGameData));
     this.state.board = [];
     this.state.questionStatus = 'idle';
     this.state.answeringPlayerId = null;

@@ -2,12 +2,12 @@
   <div class="h-screen w-full flex flex-col items-center justify-center bg-slate-950 text-slate-200 p-8">
     <div v-if="!store.connected" class="text-xl animate-pulse">Подключение к серверу...</div>
     
-    <div v-else class="w-full max-w-4xl bg-slate-900 border border-slate-700/50 rounded-xl p-8 shadow-2xl">
-      <div class="flex justify-between items-center border-b border-slate-700/50 pb-6 mb-6">
-        <h2 class="text-3xl font-bold text-amber-500">Комната: <span class="bg-slate-800 px-4 py-1 rounded text-white tracking-widest">{{ store.roomCode }}</span></h2>
+    <div v-else class="w-full max-w-4xl panel-glass p-8">
+      <div class="flex justify-between items-center border-b border-hub-border pb-6 mb-6">
+        <h2 class="text-3xl font-bold text-hub-accent">Комната: <span class="bg-hub-deep px-4 py-1 rounded text-white tracking-widest">{{ store.roomCode }}</span></h2>
         <div class="flex gap-4 items-center">
-          <span v-if="isHost" class="text-slate-400">Вы — Ведущий</span>
-          <button @click="leaveRoom" class="text-red-400 hover:text-red-300">Выйти</button>
+          <span v-if="isHost" class="text-hub-muted">Вы — Ведущий</span>
+          <button @click="leaveRoom" class="text-hub-negative hover:brightness-125">Выйти</button>
         </div>
       </div>
 
@@ -209,8 +209,9 @@ onMounted(() => {
     data.forEach(round => {
       if(round.categories) round.categories.forEach(cat => {
         cat.questions.forEach(q => {
-          if (q.media) mediaUrls.push(q.media);
-          if (q.answerMedia) mediaUrls.push(q.answerMedia);
+          // Канон полей медиа: mediaSrc / answerMediaSrc (+ legacy image/media)
+          const srcs = [q.mediaSrc, q.answerMediaSrc, q.image, q.media, q.answerMedia];
+          srcs.forEach(s => { if (s) mediaUrls.push(store.getAssetUrl(s)); });
         });
       });
     });

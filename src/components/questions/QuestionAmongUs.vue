@@ -12,7 +12,7 @@
           <img :src="player.avatar" class="w-16 h-16 rounded-2xl mb-3 shadow-lg group-hover:scale-110 transition-transform" />
           <span class="font-black text-xs text-center break-words w-full">{{ player.name }}</span>
           
-          <div v-if="store.revealedAmongUs && player.id === store.imposterId" class="absolute inset-0 bg-red-600/40 flex items-center justify-center backdrop-blur-sm">
+          <div v-if="store.amongUsResult && player.id === store.imposterId" class="absolute inset-0 bg-red-600/40 flex items-center justify-center backdrop-blur-sm">
              <span class="font-black text-white rotate-12 text-sm uppercase tracking-widest border-2 border-white px-2 py-0.5">ШПИОН</span>
           </div>
           
@@ -25,8 +25,8 @@
       
       <div v-if="store.amongUsTimerState" class="p-6 rounded-3xl bg-slate-900/50 border border-white/5 flex flex-col items-center gap-4">
          <span class="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Время на обсуждение</span>
-         <div class="text-4xl font-mono font-black" :class="store.amongUsTimerState.timeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-slate-200'">
-            {{ formatTime(store.amongUsTimerState.timeLeft) }}
+         <div class="text-4xl font-mono font-black" :class="displayTimeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-slate-200'">
+            {{ formatTime(displayTimeLeft) }}
          </div>
          <div v-if="isHost" class="flex gap-4">
             <button v-if="store.amongUsTimerState.status === 'running'" @click="emit('pauseTimer', store.amongUsTimerState.timeLeft)" class="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-500 border border-amber-500/30 text-xs font-black">ПАУЗА</button>
@@ -38,12 +38,26 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '../../stores/game'
 
 const store = useGameStore()
 const emit = defineEmits(['vote', 'pauseTimer', 'resumeTimer'])
 const isHost = computed(() => store.host?.id === store.user?.id)
+
+// Живой отсчёт: пока таймер «running», считаем остаток от endsAt (сервер тикает не сам);
+// на паузе показываем сохранённый timeLeft
+const now = ref(Date.now())
+let ticker = null
+onMounted(() => { ticker = setInterval(() => { now.value = Date.now() }, 500) })
+onUnmounted(() => { if (ticker) clearInterval(ticker) })
+
+const displayTimeLeft = computed(() => {
+  const t = store.amongUsTimerState
+  if (!t) return 0
+  if (t.status === 'running' && t.endsAt) return Math.max(0, Math.ceil((t.endsAt - now.value) / 1000))
+  return t.timeLeft ?? 0
+})
 
 const vote = (targetId) => {
   if (store.isSpectator) return

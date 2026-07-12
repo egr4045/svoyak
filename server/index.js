@@ -7,20 +7,25 @@ const jwt = require('jsonwebtoken');
 const { authRouter, JWT_SECRET, authenticateToken } = require('./auth');
 const roomManager = require('./managers/RoomManager');
 const handleRoomEvents = require('./handlers/roomHandlers');
+const { packsRouter, loadPackForRoom, MEDIA_ROOT } = require('./routes/packs');
 
 const path = require('path');
 const app = express();
 app.use(cors());
-app.use(express.json());
+// 25 МБ: глобальный парсер срабатывает раньше пер-роутерных, а импорт паков и
+// загрузка медиа (base64) не влезают в дефолтные 100kb
+app.use(express.json({ limit: '25mb' }));
 
-// Статика для медиа-файлов вопросов
+// Статика для медиа-файлов вопросов (встроенный пак) и медиа кастомных паков
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
+app.use('/packs-media', express.static(MEDIA_ROOT));
 
 // Раздача статики фронтенда (после билда)
 const frontendPath = path.join(__dirname, '..', 'dist');
 app.use(express.static(frontendPath));
 
 app.use('/auth', authRouter);
+app.use('/api/packs', packsRouter);
 
 // Хранилище аватарок в памяти (до перезапуска сервера)
 const userAvatars = new Map(); 
@@ -53,9 +58,16 @@ app.get('/api/avatar/:userId', (req, res) => {
   res.send(data);
 });
 
-// Создание комнаты (HTTP)
-app.post('/api/rooms', authenticateToken, (req, res) => {
-  const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers });
+// Создание комнаты (HTTP) — только для платформенной сессии (вход через хаб)
+app.post('/api/rooms', authenticateToken, async (req, res) => {
+  if (!req.user.platformId) return res.status(403).json({ error: 'Hub session required' });
+  // Кастомный пак ведущего (если выбран) — иначе встроенный дефолт
+  let pack = null;
+  if (req.body?.packId) {
+    pack = await loadPackForRoom(req.body.packId, req.user.platformId);
+    if (!pack) return res.status(404).json({ error: 'Pack not found' });
+  }
+  const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers, pack });
   res.status(201).json({ roomCode: code });
 });
 
@@ -87,6 +99,8 @@ io.use((socket, next) => {
 
   jwt.verify(token, JWT_SECRET, (err, user) => {
     if (err) return next(new Error('Authentication error'));
+    // Вход только через хаб: без платформенной личности в игру не пускаем
+    if (!user.platformId) return next(new Error('Hub session required'));
     socket.user = user;
     next();
   });

@@ -6,7 +6,7 @@
       <div class="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20 pointer-events-none"></div>
       
       <h2 class="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mb-8 tracking-widest uppercase drop-shadow-lg relative z-10 text-center">
-        {{ store.roundsData?.[store.currentRoundIndex]?.name || 'Раунд' }}
+        {{ roundName }}
       </h2>
       
       <div class="flex flex-col items-center mb-10 relative z-10 w-full max-w-4xl">
@@ -81,6 +81,11 @@ import { useGameStore } from '../stores/game'
 
 const store = useGameStore()
 const isHost = computed(() => store.host?.id === store.user?.id)
+
+const roundName = computed(() => {
+  const r = store.roundsData?.[store.currentRoundIndex]
+  return r?.name || r?.round || 'Раунд'
+})
 
 const allQuestionsAnswered = computed(() => {
   if (!store.board || store.board.length === 0) return false;

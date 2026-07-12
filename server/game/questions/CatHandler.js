@@ -19,6 +19,18 @@ class CatHandler extends BaseQuestionHandler {
     }
   }
 
+  // Отвечает один назначенный рулеткой игрок: неверный ответ закрывает вопрос,
+  // а НЕ открывает общий баззер
+  onWrong(gameState, { io }) {
+    const q = gameState.getCurrentQuestion();
+    const points = gameState.state.activeBet !== null ? gameState.state.activeBet : q.points;
+    gameState.adjustScore(gameState.state.answeringPlayerId, -points);
+    gameState.state.answeringPlayerId = null;
+    gameState.state.showAnswer = true;
+    gameState.state.questionStatus = 'idle';
+    io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+  }
+
   startRoulette(gameState, io) {
     gameState.state.questionStatus = 'cat_roulette';
     gameState.clearTimers();
