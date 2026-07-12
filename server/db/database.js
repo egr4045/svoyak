@@ -1,7 +1,18 @@
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
+const fs = require('fs');
 
-const dbPath = path.resolve(__dirname, 'svoyak.db');
+// БД лежит в отдельной папке data/ (НЕ в db/ рядом с исходниками): в проде эта папка
+// монтируется как volume, и если бы том перекрывал db/, он бы затенял сам database.js
+// и заморозил бы миграции. data/ содержит только файл БД.
+const dataDir = path.resolve(__dirname, '..', 'data');
+fs.mkdirSync(dataDir, { recursive: true });
+// Разовая миграция: перенести старую БД из db/svoyak.db, если она там осталась
+const legacyPath = path.resolve(__dirname, 'svoyak.db');
+const dbPath = path.join(dataDir, 'svoyak.db');
+if (fs.existsSync(legacyPath) && !fs.existsSync(dbPath)) {
+  try { fs.copyFileSync(legacyPath, dbPath); } catch { /* не критично */ }
+}
 const db = new sqlite3.Database(dbPath, (err) => {
   if (err) {
     console.error('Error opening database', err.message);
