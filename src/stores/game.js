@@ -2,6 +2,23 @@ import { defineStore } from 'pinia'
 import { io } from 'socket.io-client'
 import { usePlatformStore } from './platform'
 
+// Доп-поля стейта для новых типов-мини-игр. Держим их списком, чтобы gameStateUpdated
+// копировал любое из них без правки под каждый тип (см. цикл в initSocket).
+function extraStateDefaults() {
+  return {
+    performerId: null, performResult: null,          // караоке/крокодил/алиас
+    numberGuesses: {}, numberReveal: null,            // угадай число
+    tierRatings: {}, tierMedians: null, tierResults: null, tierSubmitted: [], // тир-лист
+    potatoRing: [], potatoTurnId: null, potatoResult: null,                    // картошка
+    reactionGrid: null, reactionRule: null, reactionWinnerId: null, reactionDone: false, // реакция
+    whoSaidCount: 0, whoSaidAnswers: null, whoSaidGuesses: {}, whoSaidResult: null,       // кто сказал
+    duelState: null,                                  // камень-ножницы
+    aliasState: null, aliasResult: null,              // алиас
+    snippetLevel: 0                                   // угадай по фрагменту
+  }
+}
+const EXTRA_STATE_KEYS = Object.keys(extraStateDefaults())
+
 export const useGameStore = defineStore('game', {
   state: () => ({
     // Auth & API
@@ -54,9 +71,13 @@ export const useGameStore = defineStore('game', {
     catTargetId: null,
     auctionTiePlayers: [],
     eventLog: [],
-    buzzerResults: []
+    buzzerResults: [],
+    // Приватный/запечатанный показ (караоке/крокодил/алиас): секрет НЕ приходит в
+    // gameStateUpdated, а адресным событием 'privateReveal' только исполнителю и ведущему
+    privateReveal: null,
+    ...extraStateDefaults()
   }),
-  
+
   getters: {
     currentQuestion: (state) => {
       if (!state.activeCell || !state.board || !state.board.length) return null
@@ -70,7 +91,12 @@ export const useGameStore = defineStore('game', {
       if (!state.user) return false
       return state.spectators.some(s => String(s.id) === String(state.user.id))
     },
-    seatsFree: (state) => Math.max(0, state.maxPlayers - state.players.length)
+    seatsFree: (state) => Math.max(0, state.maxPlayers - state.players.length),
+    // Единый поиск участника по id (игрок ИЛИ наблюдатель) — используется в
+    // Question-компонентах (Poker/Sketch и новых типах). Раньше вызывался, но не был определён.
+    getPlayerById: (state) => (id) =>
+      state.players.find(p => String(p.id) === String(id)) ||
+      state.spectators.find(s => String(s.id) === String(id)) || null
   },
 
   actions: {
@@ -223,6 +249,18 @@ export const useGameStore = defineStore('game', {
         this.eventLog = newState.eventLog;
         this.buzzerResults = newState.buzzerResults || [];
         this.amongUsVotes = newState.amongUsVotes || {};
+        // Копируем произвольные доп-поля новых типов (tier/number/potato/reaction/whosaid/rps),
+        // не перечисляя каждое: если сервер прислал ключ — отражаем его в сторе как есть.
+        for (const k of EXTRA_STATE_KEYS) {
+          if (k in newState) this[k] = newState[k];
+        }
+        // Приватный показ живёт вне broadcast-стейта — сбрасываем его, когда вопрос закрыт
+        if (!newState.activeCell) this.privateReveal = null;
+      });
+
+      // Адресный приватный показ (секрет исполнителю/ведущему, вне общего стейта)
+      this.socket.on('privateReveal', (payload) => {
+        this.privateReveal = payload;
       });
     },
 
@@ -241,6 +279,11 @@ export const useGameStore = defineStore('game', {
       // Если путь начинается с /assets/, добавляем API_URL
       return `${this.API_URL}${assetPath}`;
     },
+
+    // Универсальный мост для новых типов: компонент эмитит {name:'host:foo'|'player:bar', payload}.
+    // Хост-события сервер вешает только на сокет ведущего (if isHost), поэтому подмена клиентом
+    // безопасна; player-события гейтятся спектатором в ActiveQuestion до вызова.
+    emitAction(name, payload) { this.socket?.emit(name, payload) },
 
     // proxy actions
     startRound() { this.socket?.emit('host:startRound') },

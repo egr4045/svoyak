@@ -6,6 +6,16 @@ const SketchHandler = require('./questions/SketchHandler');
 const AuctionHandler = require('./questions/AuctionHandler');
 const CatHandler = require('./questions/CatHandler');
 const GlitchHandler = require('./questions/GlitchHandler');
+const CharadesHandler = require('./questions/CharadesHandler');
+const KaraokeHandler = require('./questions/KaraokeHandler');
+const AliasHandler = require('./questions/AliasHandler');
+const SnippetHandler = require('./questions/SnippetHandler');
+const RpsHandler = require('./questions/RpsHandler');
+const NumberHandler = require('./questions/NumberHandler');
+const TierlistHandler = require('./questions/TierlistHandler');
+const PotatoHandler = require('./questions/PotatoHandler');
+const WhoSaidHandler = require('./questions/WhoSaidHandler');
+const ReactionHandler = require('./questions/ReactionHandler');
 
 const HANDLERS = {
   'text': new StandardHandler('text'),
@@ -16,7 +26,17 @@ const HANDLERS = {
   'sketch': new SketchHandler(),
   'auction': new AuctionHandler(),
   'cat': new CatHandler(),
-  'glitch': new GlitchHandler()
+  'glitch': new GlitchHandler(),
+  'charades': new CharadesHandler(),
+  'karaoke': new KaraokeHandler(),
+  'alias': new AliasHandler(),
+  'snippet': new SnippetHandler(),
+  'rps': new RpsHandler(),
+  'number': new NumberHandler(),
+  'tierlist': new TierlistHandler(),
+  'potato': new PotatoHandler(),
+  'whosaid': new WhoSaidHandler(),
+  'reaction': new ReactionHandler()
 };
 
 
@@ -35,6 +55,22 @@ function extractRounds(pack) {
   return initialGameData;
 }
 
+// Доп-поля стейта новых типов-мини-игр. Все обнуляются при выборе/закрытии вопроса,
+// чтобы следующий вопрос того же типа не унаследовал мусор (см. resetQuestionExtras).
+function questionExtraDefaults() {
+  return {
+    performerId: null, performResult: null,          // караоке/крокодил/алиас
+    numberGuesses: {}, numberReveal: null,            // угадай число
+    tierRatings: {}, tierMedians: null, tierResults: null, tierSubmitted: [], // тир-лист
+    potatoRing: [], potatoTurnId: null, potatoResult: null,                    // картошка
+    reactionGrid: null, reactionRule: null, reactionWinnerId: null, reactionDone: false, // реакция
+    whoSaidCount: 0, whoSaidAnswers: null, whoSaidGuesses: {}, whoSaidResult: null,       // кто сказал
+    duelState: null,                                  // камень-ножницы
+    aliasState: null, aliasResult: null,              // алиас
+    snippetLevel: 0                                   // угадай по фрагменту
+  };
+}
+
 class GameState {
   constructor(roomCode, hostUser, options = {}) {
     this.roomCode = roomCode;
@@ -42,6 +78,11 @@ class GameState {
     this.pack = extractRounds(options.pack);
     this.state = this.getInitialState(hostUser, options);
     this.timers = {};
+    // Приватный показ и запечатанные сабмиты живут ВНЕ broadcast-стейта (иначе секрет
+    // утечёт всем в gameStateUpdated). См. setPrivateReveal / sealed-хелперы ниже.
+    this.privateReveal = null; // { performerId, performerPayload, hostPayload }
+    this.sealed = {};          // ephemeral per-question: { [userId]: submission }
+    this._priv = {};           // серверные секреты вопроса вне broadcast (слова алиаса, цель числа…)
   }
 
   getInitialState(hostUser, options = {}) {
@@ -79,8 +120,40 @@ class GameState {
       auctionBets: {},
       catTargetId: null,
       mediaState: { status: 'stopped', currentTime: 0 },
-      eventLog: []
+      eventLog: [],
+      ...questionExtraDefaults()
     };
+  }
+
+  // Централизованный сброс доп-полей новых типов + приватного/запечатанного хранилища.
+  // Вызывается из selectQuestion / closeQuestion / resetGame.
+  resetQuestionExtras() {
+    Object.assign(this.state, questionExtraDefaults());
+    this.privateReveal = null;
+    this.sealed = {};
+    this._priv = {};
+  }
+
+  // Приватный показ: секрет только исполнителю (perf) и ведущему (host), вне общего стейта.
+  setPrivateReveal(performerId, performerPayload, hostPayload, io) {
+    this.privateReveal = { performerId, performerPayload, hostPayload: hostPayload || performerPayload };
+    this.emitPrivateReveal(io);
+  }
+
+  emitPrivateReveal(io) {
+    if (!io || !this.privateReveal) return;
+    const perf = this.findParticipant(this.privateReveal.performerId);
+    if (perf && perf.socketId) io.to(perf.socketId).emit('privateReveal', this.privateReveal.performerPayload);
+    if (this.state.host.socketId) io.to(this.state.host.socketId).emit('privateReveal', this.privateReveal.hostPayload);
+  }
+
+  // Затираем секретные поля активного вопроса в broadcast (весь пак рассылается всем в
+  // gameStateUpdated). board и roundsData ссылаются на один объект вопроса — правка убирает
+  // секрет из обоих. this.pack не трогается, поэтому resetGame честно восстановит вопрос.
+  blankActiveQuestionFields(fields) {
+    const q = this.getCurrentQuestion();
+    if (!q) return;
+    for (const f of fields) q[f] = null;
   }
 
   addLog(text, type = 'info') {
@@ -244,6 +317,7 @@ class GameState {
     this.state.auctionBets = {};
     this.state.catTargetId = null;
     this.state.mediaState = { status: 'stopped', currentTime: 0 };
+    this.resetQuestionExtras();
 
     const handler = HANDLERS[q.type] || HANDLERS['text'];
     handler.onSelect(this, q);
@@ -253,6 +327,12 @@ class GameState {
     const q = this.getCurrentQuestion();
     if (!q) return null;
     return HANDLERS[q.type] || HANDLERS['text'];
+  }
+
+  // Пост-выбор с доступом к io (roomHandlers вызывает сразу после selectQuestion)
+  afterSelect(context) {
+    const handler = this.getHandler();
+    if (handler) handler.afterSelect(this, context);
   }
 
   handleAction(action, data, context) {
@@ -305,6 +385,7 @@ class GameState {
     this.state.imposterId = null;
     this.state.glitchSeed = null;
     this.state.failedPlayers = [];
+    this.resetQuestionExtras();
   }
 
   resetGame() {
@@ -332,6 +413,7 @@ class GameState {
     this.state.highlightedQuestion = null;
     this.state.activeBet = null;
     this.state.buzzerResults = [];
+    this.resetQuestionExtras();
     this.state.players.forEach(p => p.score = 0);
     this.state.spectators.forEach(s => s.score = 0);
     this.state.gameStarted = false;

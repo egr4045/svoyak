@@ -64,6 +64,20 @@ const STATUS_LABELS = {
   sketch_drawing: 'Игроки рисуют',
   sketch_judging: 'Оценка рисунков',
   poker_bidding: 'Покер-ставки',
+  performer_select: 'Выбор исполнителя',
+  performing: 'Идёт показ',
+  alias_playing: 'Алиас: объясняют',
+  number_inputting: 'Игроки вводят число',
+  number_results: 'Итоги (число)',
+  tier_rating: 'Оценка объектов',
+  tier_results: 'Итоги тир-листа',
+  potato_playing: 'Горячая картошка',
+  reaction_active: 'Реакция!',
+  whosaid_collecting: 'Пишут ответы',
+  whosaid_guessing: 'Угадывают авторов',
+  whosaid_results: 'Итоги (кто сказал)',
+  rps_picking: 'Камень-ножницы',
+  snippet_playing: 'Фрагмент',
 }
 const statusLabel = computed(() => STATUS_LABELS[store.questionStatus] || '')
 
@@ -90,6 +104,25 @@ const primary = computed(() => {
       return store.currentQuestion?.type === 'among_us'
         ? { label: '🕵 Начать голосование', run: () => store.startAmongUsTimer() }
         : null
+    // --- Новые типы-мини-игры ---
+    case 'performer_select':
+      return { label: '🎲 Случайный исполнитель', run: () => store.emitAction('host:setPerformer', null) }
+    case 'performing':
+      return { label: 'Никто не угадал (пас)', tone: 'danger', run: () => store.emitAction('host:passQuestion') }
+    case 'alias_playing':
+      return { label: '⏭ Пропустить слово', run: () => store.emitAction('host:aliasSkip') }
+    case 'number_inputting':
+      return { label: 'Показать, кто ближе', run: () => store.emitAction('host:revealNumber') }
+    case 'tier_rating':
+      return { label: 'Подвести итоги', run: () => store.emitAction('host:revealTier') }
+    case 'whosaid_collecting':
+      return { label: 'Вскрыть ответы', run: () => store.emitAction('host:revealWhoSaid') }
+    case 'whosaid_guessing':
+      return { label: 'Показать авторов', run: () => store.emitAction('host:scoreWhoSaid') }
+    case 'snippet_playing':
+      return { label: '▶ Пуск баззера', run: () => store.startBuzzer() }
+    case 'reaction_active':
+      return { label: 'Показать ответ', tone: 'danger', run: () => store.emitAction('host:endReaction') }
     default:
       return null
   }

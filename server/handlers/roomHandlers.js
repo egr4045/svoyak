@@ -26,6 +26,18 @@ function handleRoomEvents(io, socket, user) {
 
     io.to(room.roomCode).emit('gameStateUpdated', room.state);
 
+    // Приватный показ переживает реконнект: тело room:join выполняется на каждый (ре)коннект
+    // (в т.ч. ниже гварда _handlersBound), а setPlayerConnection выше уже обновил socketId.
+    // Дошлём секрет напрямую этому сокету, если он исполнитель или ведущий.
+    if (room.privateReveal) {
+      if (String(room.privateReveal.performerId) === String(user.id)) {
+        socket.emit('privateReveal', room.privateReveal.performerPayload);
+      }
+      if (String(room.state.host.id) === String(user.id)) {
+        socket.emit('privateReveal', room.privateReveal.hostPayload);
+      }
+    }
+
     // Динамический guard: роль может смениться посреди сессии (promote/demote)
     const isPlayer = () => room.state.players.some(p => String(p.id) === String(user.id));
 
@@ -63,6 +75,7 @@ function handleRoomEvents(io, socket, user) {
 
       socket.on('host:selectQuestion', ({ catIdx, qIdx }) => {
         room.selectQuestion(catIdx, qIdx);
+        room.afterSelect({ io }); // типам с таймером/рассылкой при открытии (напр. картошка)
         io.to(room.roomCode).emit('gameStateUpdated', room.state);
       });
       socket.on('host:kickPlayer', (playerId) => {
@@ -164,6 +177,21 @@ function handleRoomEvents(io, socket, user) {
           io.to(room.roomCode).emit('gameStateUpdated', room.state);
         }
       });
+
+      // --- Ведущий-действия новых типов-мини-игр (делегируются текущему хендлеру) ---
+      // Клиент шлёт их универсальным мостом emitAction; хендлер, не знающий действие, просто игнорит.
+      for (const ev of [
+        'host:setPerformer', 'host:awardGuess', 'host:passQuestion',   // крокодил/караоке/алиас
+        'host:aliasGuessed', 'host:aliasSkip',                          // алиас
+        'host:revealNumber',                                           // угадай число
+        'host:revealTier',                                            // тир-лист
+        'host:setDuel', 'host:revealDuel',                            // камень-ножницы
+        'host:revealMore',                                           // угадай по фрагменту
+        'host:revealWhoSaid', 'host:scoreWhoSaid',                  // кто сказал
+        'host:endReaction'                                          // реакция
+      ]) {
+        socket.on(ev, (data) => room.handleAction(ev, data, { io, socket, user }));
+      }
     }
 
     // Наблюдатель занимает свободное место сам (сервер валидирует; первый клик выигрывает)
@@ -260,6 +288,21 @@ function handleRoomEvents(io, socket, user) {
       if (!isPlayer()) return;
       room.handleAction('player:voteAmongUs', targetId, { io, socket, user });
     });
+
+    // --- Игрок-действия новых типов-мини-игр (наблюдатели отсекаются isPlayer) ---
+    for (const ev of [
+      'player:rpsPick',       // камень-ножницы
+      'player:submitNumber',  // угадай число
+      'player:submitTier',    // тир-лист
+      'player:passPotato',    // горячая картошка
+      'player:submitWhoSaid', 'player:guessAuthor', // кто сказал
+      'player:tapTarget'      // реакция
+    ]) {
+      socket.on(ev, (data) => {
+        if (!isPlayer()) return;
+        room.handleAction(ev, data, { io, socket, user });
+      });
+    }
 
     socket.on('player:loaded', () => {
       room.setPlayerLoaded(user.id, true);

@@ -41,7 +41,8 @@
                  @submitBet="v => !store.isSpectator && store.submitAuctionBet(v)"
                  @pauseTimer="v => store.pauseAmongUsTimer(v)"
                  @resumeTimer="v => store.resumeAmongUsTimer(v)"
-                 @awardWinner="v => store.awardSketchWinner(v)" />      <!-- Обычный блок ввода ответов (text_input / text_inputting / text_judging) -->
+                 @awardWinner="v => store.awardSketchWinner(v)"
+                 @action="onAction" />      <!-- Обычный блок ввода ответов (text_input / text_inputting / text_judging) -->
       <div v-if="store.currentQuestion.type === 'text_input' || store.questionStatus === 'text_inputting' || store.questionStatus === 'text_judging'" class="w-full flex flex-col items-center">
         <div v-if="store.questionStatus === 'text_inputting'" class="w-full bg-hub-deep/50 p-6 rounded-xl border border-hub-border mb-8 max-w-2xl mx-auto">
 
@@ -177,6 +178,16 @@ import QuestionAmongUs from './questions/QuestionAmongUs.vue'
 import QuestionSketch from './questions/QuestionSketch.vue'
 import QuestionAuction from './questions/QuestionAuction.vue'
 import QuestionCat from './questions/QuestionCat.vue'
+import QuestionCharades from './questions/QuestionCharades.vue'
+import QuestionKaraoke from './questions/QuestionKaraoke.vue'
+import QuestionAlias from './questions/QuestionAlias.vue'
+import QuestionSnippet from './questions/QuestionSnippet.vue'
+import QuestionRps from './questions/QuestionRps.vue'
+import QuestionNumber from './questions/QuestionNumber.vue'
+import QuestionTierlist from './questions/QuestionTierlist.vue'
+import QuestionPotato from './questions/QuestionPotato.vue'
+import QuestionWhoSaid from './questions/QuestionWhoSaid.vue'
+import QuestionReaction from './questions/QuestionReaction.vue'
 
 const QuestionComponents = {
   text: QuestionStandard,
@@ -187,11 +198,29 @@ const QuestionComponents = {
   among_us: QuestionAmongUs,
   sketch: QuestionSketch,
   auction: QuestionAuction,
-  cat: QuestionCat
+  cat: QuestionCat,
+  charades: QuestionCharades,
+  karaoke: QuestionKaraoke,
+  alias: QuestionAlias,
+  snippet: QuestionSnippet,
+  rps: QuestionRps,
+  number: QuestionNumber,
+  tierlist: QuestionTierlist,
+  potato: QuestionPotato,
+  whosaid: QuestionWhoSaid,
+  reaction: QuestionReaction
 }
 
 const store = useGameStore()
 const isHost = computed(() => store.host?.id === store.user?.id)
+
+// Универсальный мост эмитов новых типов: компонент шлёт {name, payload}.
+// player:* режем для наблюдателя; host:* сервер и так вешает только на сокет ведущего.
+function onAction({ name, payload } = {}) {
+  if (!name) return
+  if (name.startsWith('player:') && store.isSpectator) return
+  store.emitAction(name, payload)
+}
 
 // Локальное состояние UI
 const customAlert = ref('')

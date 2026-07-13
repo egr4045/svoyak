@@ -76,7 +76,7 @@
           <div class="flex gap-2">
             <label class="flex-1">
               <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Тип</span>
-              <select v-model="editQ.type" class="hub-input text-sm w-full mt-1">
+              <select v-model="editQ.type" @change="ensureTypeFields(editQ)" class="hub-input text-sm w-full mt-1">
                 <option v-for="t in TYPES" :key="t" :value="t">{{ TYPE_META[t].l }}</option>
               </select>
             </label>
@@ -85,15 +85,57 @@
               <input v-model.number="editQ.points" type="number" class="hub-input text-sm w-full mt-1" />
             </label>
           </div>
-          <textarea v-model="editQ.q" rows="3" class="hub-input text-sm w-full" placeholder="Текст вопроса"></textarea>
-          <input v-model="editQ.a" class="hub-input text-sm w-full" placeholder="Ответ" />
 
-          <div v-if="editQ.type === 'media'" class="flex items-center gap-2 flex-wrap">
+          <p class="text-[11px] text-hub-muted -mb-1">{{ TYPE_HINT[editQ.type] || '' }}</p>
+
+          <textarea v-if="!NO_Q_TYPES.includes(editQ.type)" v-model="editQ.q" rows="2" class="hub-input text-sm w-full" :placeholder="qPlaceholder"></textarea>
+          <input v-if="A_TYPES.includes(editQ.type)" v-model="editQ.a" class="hub-input text-sm w-full" :placeholder="aPlaceholder" />
+
+          <!-- Медиа: обычное медиа, реф-аудио караоке, фрагмент -->
+          <div v-if="MEDIA_TYPES.includes(editQ.type)" class="flex items-center gap-2 flex-wrap">
             <label class="hub-btn text-xs cursor-pointer">
-              {{ editQ.mediaSrc ? '🔁 Заменить медиа' : '📎 Загрузить медиа' }}
+              {{ editQ.mediaSrc ? '🔁 Заменить' : '📎 Загрузить' }} {{ editQ.type === 'karaoke' ? 'реф-аудио' : editQ.type === 'snippet' ? 'фрагмент' : 'медиа' }}
               <input type="file" class="hidden" accept="image/*,audio/*,video/*" @change="onMedia($event, editQ)" />
             </label>
             <span v-if="editQ.mediaSrc" class="text-xs text-hub-positive">✓ {{ editQ.mediaType }} прикреплён</span>
+          </div>
+
+          <!-- Число: тип значения -->
+          <label v-if="editQ.type === 'number'" class="flex flex-col">
+            <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Тип значения</span>
+            <select v-model="editQ.numberKind" class="hub-input text-sm mt-1 w-40">
+              <option value="number">Число</option>
+              <option value="year">Год</option>
+              <option value="date">Дата (ГГГГ-ММ-ДД)</option>
+            </select>
+          </label>
+
+          <!-- Алиас: список слов + таймер -->
+          <div v-if="editQ.type === 'alias'" class="flex flex-col gap-2">
+            <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Слова (по одному)</span>
+            <div v-for="(w, wi) in editQ.words" :key="wi" class="flex gap-2">
+              <input v-model="editQ.words[wi]" class="hub-input text-sm flex-1" placeholder="Слово" />
+              <button @click="editQ.words.splice(wi, 1)" class="hub-btn text-xs !text-hub-negative">✕</button>
+            </div>
+            <button @click="editQ.words.push('')" class="hub-btn text-xs self-start">+ Слово</button>
+            <label class="flex items-center gap-2 mt-1">
+              <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Время, сек</span>
+              <input v-model.number="editQ.timerSec" type="number" class="hub-input text-sm w-24" placeholder="60" />
+            </label>
+          </div>
+
+          <!-- Тир-лист: список объектов (текст + опц. картинка) -->
+          <div v-if="editQ.type === 'tierlist'" class="flex flex-col gap-2">
+            <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Объекты для оценки</span>
+            <div v-for="(it, ii) in editQ.items" :key="ii" class="flex gap-2 items-center">
+              <input v-model="it.label" class="hub-input text-sm flex-1" placeholder="Название объекта" />
+              <label class="hub-btn text-xs cursor-pointer" :title="it.mediaSrc ? 'Заменить картинку' : 'Картинка объекта'">
+                {{ it.mediaSrc ? '🖼✓' : '📎' }}
+                <input type="file" class="hidden" accept="image/*" @change="onItemMedia($event, it)" />
+              </label>
+              <button @click="editQ.items.splice(ii, 1)" class="hub-btn text-xs !text-hub-negative">✕</button>
+            </div>
+            <button @click="editQ.items.push({ label: '' })" class="hub-btn text-xs self-start">+ Объект</button>
           </div>
 
           <button @click="deleteQuestion" class="hub-btn text-xs !text-hub-negative self-start mt-2">🗑 Удалить вопрос</button>
@@ -123,8 +165,24 @@ const TYPE_META = {
   poker:      { l: 'Покер',                       short: 'Покер',   tone: '#d96c3b' },
   auction:    { l: 'Аукцион',                     short: 'Аукцион', tone: '#e8c24a' },
   sketch:     { l: 'Рисование',                   short: 'Рисунок', tone: '#49a05a' },
+  // Новые типы-мини-игры
+  charades:   { l: 'Крокодил',                    short: 'Крокодил', tone: '#00cec9' },
+  karaoke:    { l: 'Караоке',                     short: 'Караоке',  tone: '#e84393' },
+  alias:      { l: 'Алиас',                       short: 'Алиас',    tone: '#6c5ce7' },
+  snippet:    { l: 'Угадай по фрагменту',         short: 'Фрагмент', tone: '#fab1a0' },
+  rps:        { l: 'Камень-ножницы',              short: 'КНБ',      tone: '#8a94a6' },
+  number:     { l: 'Угадай число',                short: 'Число',    tone: '#3da9fc' },
+  tierlist:   { l: 'Тир-лист',                    short: 'Тир-лист', tone: '#00b894' },
+  potato:     { l: 'Горячая картошка',            short: 'Картошка', tone: '#e0524a' },
+  whosaid:    { l: 'Кто это сказал',              short: 'Кто сказал', tone: '#a29bfe' },
+  reaction:   { l: 'Реакция',                     short: 'Реакция',  tone: '#fdcb6e' },
 }
 const TYPES = Object.keys(TYPE_META)
+
+// Показывать ли поля «вопрос» и «ответ» для типа (у части типов их нет)
+const NO_Q_TYPES = ['rps', 'reaction']
+const A_TYPES = ['text', 'media', 'text_input', 'glitch', 'cat', 'among_us', 'poker', 'auction', 'charades', 'karaoke', 'number', 'snippet']
+const MEDIA_TYPES = ['media', 'karaoke', 'snippet']
 
 const local = reactive({ name: '', data: { rounds: [] } })
 const activeRound = ref(0)
@@ -135,8 +193,67 @@ const msg = ref(''); const msgErr = ref(false)
 const round = computed(() => local.data.rounds[activeRound.value] || null)
 const editQ = computed(() => editing.value ? editing.value.cat.questions[editing.value.qi] : {})
 
+// Подсказка по механике типа (показывается над полями)
+const TYPE_HINT = {
+  charades: 'Ведущий тайно показывает слово исполнителю; тот объясняет голосом, не называя.',
+  karaoke:  'Исполнитель получает реф-аудио в наушник и напевает; остальные угадывают.',
+  alias:    'Исполнителю по одному приходят слова; объясняет всем, ведущий отмечает угадавших.',
+  snippet:  'Фрагмент (аудио/видео/фото). «Открыть больше» снижает очки; отгадывают по баззеру.',
+  rps:      'Ведущий выбирает двух дуэлянтов; они тайно выбирают, победителю очки. Контент не нужен.',
+  number:   'Все вводят число/год/дату; ближайший к ответу получает очки.',
+  tierlist: 'Каждый объект оценивают ползунком 1–10; очки — за близость к медиане группы.',
+  potato:   'Игроки по кругу называют варианты на скрытом таймере; на ком «взорвётся» — теряет очки.',
+  whosaid:  'Все анонимно пишут ответ на промпт; затем угадывают, чей ответ.',
+  reaction: 'Движок сам строит сетку и правило; первый верный тап получает очки. Контент не нужен.',
+}
+const qPlaceholder = computed(() => {
+  switch (editQ.value.type) {
+    case 'potato':   return 'Категория (например: «Марки машин»)'
+    case 'whosaid':  return 'Промпт (например: «Самый неловкий момент»)'
+    case 'charades':
+    case 'karaoke':  return 'Инструкция (необязательно)'
+    case 'number':   return 'Вопрос (например: «В каком году…»)'
+    default:         return 'Текст вопроса'
+  }
+})
+const aPlaceholder = computed(() => {
+  switch (editQ.value.type) {
+    case 'karaoke':  return 'Название песни'
+    case 'charades': return 'Слово для показа'
+    case 'number':   return editQ.value.numberKind === 'date' ? 'Ответ: ГГГГ-ММ-ДД'
+                          : editQ.value.numberKind === 'year' ? 'Ответ: год' : 'Ответ: число'
+    default:         return 'Ответ'
+  }
+})
+
 function flash(text, err = false) { msg.value = text; msgErr.value = err; setTimeout(() => (msg.value = ''), 4000) }
-function isBlank(q) { return !q.q?.trim() || (q.type !== 'sketch' && q.type !== 'media' && !q.a?.trim()) }
+
+// Каждый тип валиден по своим полям (иначе на доске висит ⚠).
+function isBlank(q) {
+  const noQ = !q.q?.trim()
+  const noA = !q.a?.trim()
+  switch (q.type) {
+    case 'reaction':
+    case 'rps':       return false                 // авто/без контента
+    case 'sketch':
+    case 'potato':
+    case 'whosaid':
+    case 'media':     return noQ                   // нужен только текст (вопрос/категория/промпт)
+    case 'charades':
+    case 'karaoke':   return noA                   // нужно слово/название; инструкция опциональна
+    case 'snippet':   return !q.mediaSrc || noA    // нужен фрагмент-медиа и ответ
+    case 'alias':     return !(q.words && q.words.some(w => w?.trim())) // ≥1 слово
+    case 'tierlist':  return !(q.items && q.items.some(it => it?.label?.trim() || it?.mediaSrc)) // ≥1 объект
+    default:          return noQ || noA            // обычные типы: вопрос + ответ
+  }
+}
+
+// Ленивая инициализация полей-массивов при выборе типа (addQuestion всегда делает text)
+function ensureTypeFields(q) {
+  if (q.type === 'alias' && !Array.isArray(q.words)) q.words = ['']
+  if (q.type === 'tierlist' && !Array.isArray(q.items)) q.items = [{ label: '' }]
+  if (q.type === 'number' && !q.numberKind) q.numberKind = 'number'
+}
 
 onMounted(async () => {
   try {
@@ -162,7 +279,7 @@ function addQuestion(cat) {
   cat.questions.push(q)
   openQuestion(cat, cat.questions.length - 1)
 }
-function openQuestion(cat, qi) { editing.value = { cat, qi } }
+function openQuestion(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]) }
 function deleteQuestion() {
   editing.value.cat.questions.splice(editing.value.qi, 1)
   editing.value = null
@@ -211,18 +328,29 @@ function roundMenu(ri, e) {
   ])
 }
 
+async function uploadTo(target, file) {
+  const dataUrl = await new Promise((res, rej) => {
+    const r = new FileReader(); r.onerror = rej; r.onload = () => res(r.result); r.readAsDataURL(file)
+  })
+  const url = await packs.uploadMedia(props.packId, dataUrl)
+  target.mediaSrc = url
+  target.mediaType = file.type.startsWith('image') ? 'image' : file.type.startsWith('audio') ? 'audio' : 'video'
+}
+
 async function onMedia(e, q) {
   const file = e.target.files?.[0]
   if (!file) return
-  try {
-    const dataUrl = await new Promise((res, rej) => {
-      const r = new FileReader(); r.onerror = rej; r.onload = () => res(r.result); r.readAsDataURL(file)
-    })
-    const url = await packs.uploadMedia(props.packId, dataUrl)
-    q.mediaSrc = url
-    q.mediaType = file.type.startsWith('image') ? 'image' : file.type.startsWith('audio') ? 'audio' : 'video'
-    flash('Медиа загружено')
-  } catch (err) { flash(err.message, true) }
+  try { await uploadTo(q, file); flash('Медиа загружено') }
+  catch (err) { flash(err.message, true) }
+  e.target.value = ''
+}
+
+// Медиа для отдельного объекта тир-листа
+async function onItemMedia(e, item) {
+  const file = e.target.files?.[0]
+  if (!file) return
+  try { await uploadTo(item, file); flash('Медиа объекта загружено') }
+  catch (err) { flash(err.message, true) }
   e.target.value = ''
 }
 
