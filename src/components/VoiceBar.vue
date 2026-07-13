@@ -12,6 +12,12 @@
       🎙 Голос появится после обновления SDK платформы
     </div>
 
+    <!-- Незащищённый контекст (http): микрофон/камера недоступны -->
+    <div v-else-if="!platform.voiceSecure"
+         class="panel-glass px-4 py-2 text-xs text-hub-warning shadow-lg">
+      🎙 Голос доступен только по HTTPS — откройте игру из хаба
+    </div>
+
     <!-- Активная голосовая панель -->
     <div v-else class="panel-glass px-3 py-2 flex items-center gap-2 shadow-lg">
       <template v-if="platform.voiceConnected">
@@ -30,6 +36,8 @@
         <span class="text-xs text-hub-muted font-bold px-1">
           {{ platform.voice.participants.length }} в голосе
         </span>
+        <!-- Ошибка даже в подключённом состоянии (напр. микрофон недоступен) -->
+        <span v-if="platform.voice.error" class="text-xs text-hub-warning px-1" :title="platform.voice.error">⚠ {{ platform.voice.error }}</span>
         <button v-if="isHost" @click="inviteParty"
                 class="hub-btn text-xs !text-hub-accent"
                 title="Отправить приглашение всем участникам текущего звонка">

@@ -8,7 +8,11 @@ export const useGameStore = defineStore('game', {
     token: localStorage.getItem('token') || null,
     user: null, // { id, username, avatar }
     roomCode: null,
-    API_URL: import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:3000' : window.location.origin),
+    // В проде игру отдаёт шлюз хаба на суб-пути (base '/svoyak/'), поэтому API_URL и
+    // сокет должны нести этот префикс (Caddy его стрипает, сервер остаётся на root).
+    API_URL: import.meta.env.VITE_API_URL || (import.meta.env.DEV
+      ? 'http://localhost:3000'
+      : window.location.origin + (import.meta.env.BASE_URL === '/' ? '' : import.meta.env.BASE_URL.replace(/\/$/, ''))),
     
     // Socket
     socket: null,
@@ -144,8 +148,13 @@ export const useGameStore = defineStore('game', {
     initSocket() {
       if (!this.token) return;
       if (this.socket) return;
-      
-      this.socket = io(`${this.API_URL}`, {
+
+      // socket.io: путь в URL трактуется как namespace, поэтому суб-путь задаём через `path`.
+      // dev → origin=localhost:3000, path=/socket.io/; прод → origin, path=/svoyak/socket.io/.
+      const socketOrigin = import.meta.env.DEV ? this.API_URL : window.location.origin;
+      const socketPath = import.meta.env.BASE_URL + 'socket.io/';
+      this.socket = io(socketOrigin, {
+        path: socketPath,
         auth: { token: this.token }
       });
       

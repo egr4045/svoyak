@@ -57,6 +57,9 @@ export const usePlatformStore = defineStore('platform', {
 
   getters: {
     voiceConnected: (state) => state.voice.status === 'connected',
+    // Микрофон/камера доступны только в защищённом контексте (https/localhost).
+    // На голом http (:8089) getUserMedia недоступен — голос не поднять.
+    voiceSecure: () => typeof window === 'undefined' || window.isSecureContext !== false,
     // Участник звонка по платформенному accountId (для карточек игроков)
     participantFor: (state) => (platformId) => {
       if (!platformId) return null
@@ -102,6 +105,12 @@ export const usePlatformStore = defineStore('platform', {
     async joinVoice(roomCode, { spectator = false } = {}) {
       const call = getCall()
       if (!call || !roomCode) return false
+      // На незащищённом контексте (http) микрофон недоступен — не поднимаем голос,
+      // показываем понятную причину вместо молчаливого «N в голосе» без звука
+      if (!this.voiceSecure) {
+        this.voice.error = 'Голос доступен только по HTTPS — откройте игру из хаба'
+        return false
+      }
       this.voice.error = null // прошлая неудача не должна блокировать повторный вход
       const targetKey = `game:${GAME_ID}:${roomCode}`
       try {

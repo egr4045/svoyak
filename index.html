@@ -8,12 +8,7 @@
   </head>
   <body>
     <div id="app"></div>
-    <!-- Шим Node-глобала process: IIFE-сборка SDK читает process.env.NODE_ENV
-         (React и др.), которого в браузере нет — без шима скрипт падает и window.mygame не встаёт. -->
-    <script>window.process = window.process || { env: {} }; window.process.env = window.process.env || {}; if (!window.process.env.NODE_ENV) window.process.env.NODE_ENV = 'production';</script>
-    <!-- SDK платформы MyGame Hub (window.mygame). Файл появляется через `npm run sdk:sync`;
-         без него игра работает как раньше (404 безвреден). -->
-    <script src="/vendor/mygame-sdk.global.js"></script>
+    <!-- process-шим и vendored SDK грузятся из main.js (base-aware, для суб-пути /svoyak/) -->
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -74,6 +74,10 @@ watch(() => store.host, (h) => {
     platform.setActivity(store.roomCode)
   }
 }, { immediate: true })
+// Повысили из наблюдателя в игрока — авто-включаем микрофон
+watch(() => store.isSpectator, (isSpec, was) => {
+  if (was && !isSpec && platform.voiceConnected) platform.setMic(true)
+})
 
 function leaveRoom() {
   store.logout();

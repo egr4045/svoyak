@@ -78,9 +78,12 @@
                 </div>
               </div>
             </div>
-            <p v-if="store.isSpectator" class="text-xs text-hub-muted italic mt-3">
-              Вы наблюдатель: видите игру и участвуете в голосовом чате, но не отвечаете на вопросы.
-            </p>
+            <div v-if="store.isSpectator" class="mt-3 flex flex-col gap-2 items-start">
+              <p class="text-xs text-hub-muted italic">
+                Вы наблюдатель: видите игру и участвуете в голосовом чате, но не отвечаете на вопросы.
+              </p>
+              <button @click="leaveRoom" class="hub-btn text-xs">🚪 Не хочу смотреть — в хаб (другая игра)</button>
+            </div>
           </div>
         </div>
 
@@ -159,6 +162,10 @@ watch(() => store.host, (h) => {
 }, { immediate: true })
 // Когда платформенный профиль подъехал — сообщаем серверу свой аватар
 watch(() => platform.me, () => store.reportAvatar(), { immediate: true })
+// Повысили из наблюдателя в игрока — авто-включаем микрофон (joinVoice одноразовый)
+watch(() => store.isSpectator, (isSpec, was) => {
+  if (was && !isSpec && platform.voiceConnected) platform.setMic(true)
+})
 
 const myAssetsLoaded = ref(false)
 const loadProgress = ref(0)
