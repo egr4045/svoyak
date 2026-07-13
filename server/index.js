@@ -16,9 +16,12 @@ app.use(cors());
 // загрузка медиа (base64) не влезают в дефолтные 100kb
 app.use(express.json({ limit: '25mb' }));
 
-// Статика для медиа-файлов вопросов (встроенный пак) и медиа кастомных паков
+// Статика для медиа-файлов вопросов (встроенный пак) и медиа кастомных паков.
+// 404-терминаторы, чтобы несуществующий медиа-путь не проваливался в SPA-catch-all (был бы 200 + index.html)
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
+app.use('/assets', (req, res) => res.status(404).end());
 app.use('/packs-media', express.static(MEDIA_ROOT));
+app.use('/packs-media', (req, res) => res.status(404).end());
 
 // Раздача статики фронтенда (после билда)
 const frontendPath = path.join(__dirname, '..', 'dist');
@@ -115,6 +118,9 @@ io.on('connection', (socket) => {
 app.get('/metrics', (req, res) => {
   res.json({ players: io.engine.clientsCount });
 });
+
+// Неизвестные /api-маршруты — честный 404 (а не index.html из SPA-catch-all)
+app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
 // Обработка всех остальных маршрутов под фронтенд (SPA)
 app.get(/.*/, (req, res) => {
