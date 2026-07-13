@@ -17,9 +17,10 @@ app.use(cors());
 app.use(express.json({ limit: '25mb' }));
 
 // Статика для медиа-файлов вопросов (встроенный пак) и медиа кастомных паков.
-// 404-терминаторы, чтобы несуществующий медиа-путь не проваливался в SPA-catch-all (был бы 200 + index.html)
+// ВНИМАНИЕ: под /assets лежит И серверная медиа (server/assets), И фронтовый бандл Vite
+// (dist/assets) — поэтому 404-терминатор на /assets ставить НЕЛЬЗЯ (срубит JS/CSS фронта).
+// Терминаторы только на префиксы, которые не пересекаются с фронтом.
 app.use('/assets', express.static(path.join(__dirname, 'assets')));
-app.use('/assets', (req, res) => res.status(404).end());
 app.use('/packs-media', express.static(MEDIA_ROOT));
 app.use('/packs-media', (req, res) => res.status(404).end());
 
