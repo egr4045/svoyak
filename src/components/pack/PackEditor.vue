@@ -14,6 +14,7 @@
       <div class="flex items-center gap-1 border-b border-hub-border mb-5 flex-wrap">
         <button v-for="(round, ri) in local.data.rounds" :key="ri"
                 @click="activeRound = ri"
+                @contextmenu="roundMenu(ri, $event)"
                 class="px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors"
                 :class="activeRound === ri ? 'border-hub-accent text-hub-accent' : 'border-transparent text-hub-muted hover:text-hub-text'">
           {{ round.name || `Раунд ${ri + 1}` }}
@@ -32,7 +33,8 @@
         <div class="space-y-2 mb-3">
           <div v-for="(cat, ci) in round.categories" :key="ci" class="flex items-stretch gap-2">
             <!-- Заголовок категории (как в игре: акцентная левая грань) -->
-            <div class="w-44 shrink-0 bg-gradient-to-r from-hub-deep to-hub-solid border-l-4 border-hub-accent rounded-r-lg p-2 flex flex-col justify-between">
+            <div class="w-44 shrink-0 bg-gradient-to-r from-hub-deep to-hub-solid border-l-4 border-hub-accent rounded-r-lg p-2 flex flex-col justify-between"
+                 @contextmenu="catMenu(round, ci, $event)">
               <input v-model="cat.category" class="bg-transparent outline-none text-sm font-black text-hub-text w-full" placeholder="Категория" />
               <button @click="removeCategory(round, ci)" class="text-[10px] text-hub-negative hover:brightness-125 self-start mt-1">✕ строку</button>
             </div>
@@ -41,6 +43,7 @@
             <div class="flex gap-2 flex-wrap items-stretch">
               <button v-for="(q, qi) in cat.questions" :key="qi"
                       @click="openQuestion(cat, qi)"
+                      @contextmenu="cellMenu(cat, qi, $event)"
                       class="w-24 h-[68px] rounded-lg border flex flex-col items-center justify-center transition-all hover:scale-[1.03] relative"
                       :class="isBlank(q) ? 'border-dashed border-hub-warning/50 bg-hub-warning/5' : 'border-hub-border bg-hub-deep/60 hover:border-hub-accent'">
                 <span class="text-xl font-black" :style="{ color: 'var(--c-accent)' }">{{ q.points }}</span>
@@ -103,6 +106,7 @@
 <script setup>
 import { reactive, ref, computed, onMounted } from 'vue'
 import { usePacksStore } from '../../stores/packs'
+import { getPlatform } from '../../platform/sdk'
 
 const props = defineProps({ packId: { type: String, required: true } })
 const emit = defineEmits(['close', 'saved'])
@@ -162,6 +166,49 @@ function openQuestion(cat, qi) { editing.value = { cat, qi } }
 function deleteQuestion() {
   editing.value.cat.questions.splice(editing.value.qi, 1)
   editing.value = null
+}
+
+// --- Дублирование ---
+const clone = (o) => JSON.parse(JSON.stringify(o))
+function duplicateQuestion(cat, qi) {
+  const copy = clone(cat.questions[qi]); delete copy.mediaSrc; delete copy.mediaType // медиа не копируем (файл один)
+  cat.questions.splice(qi + 1, 0, copy)
+}
+function duplicateCategory(r, ci) { r.categories.splice(ci + 1, 0, clone(r.categories[ci])) }
+function duplicateRound(ri) {
+  const copy = clone(local.data.rounds[ri]); copy.name = (copy.name || `Раунд ${ri + 1}`) + ' (копия)'
+  local.data.rounds.splice(ri + 1, 0, copy); activeRound.value = ri + 1
+}
+
+// --- ПКМ-меню (SDK). Без window.mygame — отдаём браузеру родное меню ---
+function openMenu(e, items) {
+  const platform = getPlatform()
+  if (!platform?.ui?.showContextMenu || !items.length) return
+  e.preventDefault()
+  platform.ui.showContextMenu({ x: e.clientX, y: e.clientY, items })
+}
+function cellMenu(cat, qi, e) {
+  openMenu(e, [
+    { label: '✏ Редактировать', action: () => openQuestion(cat, qi) },
+    { label: '⧉ Дублировать', action: () => duplicateQuestion(cat, qi) },
+    { label: '🗑 Удалить', danger: true, action: () => cat.questions.splice(qi, 1) },
+  ])
+}
+function catMenu(r, ci, e) {
+  openMenu(e, [
+    { label: '⧉ Дублировать строку', action: () => duplicateCategory(r, ci) },
+    { label: '➕ Добавить вопрос', action: () => addQuestion(r.categories[ci]) },
+    { separator: true, action: () => {} },
+    { label: '🗑 Удалить строку', danger: true, action: () => removeCategory(r, ci) },
+  ])
+}
+function roundMenu(ri, e) {
+  openMenu(e, [
+    { label: '⧉ Дублировать раунд', action: () => duplicateRound(ri) },
+    { label: '➕ Добавить категорию', action: () => { activeRound.value = ri; addCategory(local.data.rounds[ri]) } },
+    { separator: true, action: () => {} },
+    { label: '🗑 Удалить раунд', danger: true, action: () => removeRound(ri) },
+  ])
 }
 
 async function onMedia(e, q) {

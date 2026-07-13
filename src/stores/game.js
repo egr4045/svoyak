@@ -50,8 +50,7 @@ export const useGameStore = defineStore('game', {
     catTargetId: null,
     auctionTiePlayers: [],
     eventLog: [],
-    buzzerResults: [],
-    reactions: {} // { [playerId]: emoji | null }
+    buzzerResults: []
   }),
   
   getters: {
@@ -107,34 +106,14 @@ export const useGameStore = defineStore('game', {
       }
     },
 
-    async uploadAvatar(file) {
-      if (file.size > 2 * 1024 * 1024) throw new Error('Файл слишком большой (макс 2МБ)');
-      
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onerror = reject;
-        reader.onload = async (e) => {
-          try {
-            const res = await fetch(`${this.API_URL}/api/upload/avatar`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.token}`
-              },
-              body: JSON.stringify({ avatar: e.target.result })
-            });
-            if (res.ok) {
-              if (this.socket) this.socket.emit('player:updateAvatar');
-              resolve();
-            } else {
-              reject(new Error('Ошибка загрузки'));
-            }
-          } catch (err) {
-            reject(err);
-          }
-        };
-        reader.readAsDataURL(file);
-      });
+    // Сообщаем серверу платформенный аватар игрока (сам о себе), чтобы он показывался
+    // на карточках у всех. Своей загрузки аватара больше нет — берём из профиля хаба.
+    reportAvatar() {
+      try {
+        const platform = usePlatformStore();
+        const icon = platform.me?.avatarIcon;
+        if (this.socket && icon) this.socket.emit('player:setAvatar', { avatar: icon });
+      } catch { /* платформа не готова — ок */ }
     },
 
     async createRoom(maxPlayers, packId) {
@@ -182,6 +161,7 @@ export const useGameStore = defineStore('game', {
             platform.spectateIntent = false;
           } catch { /* ок */ }
           this.socket.emit('room:join', this.roomCode, { spectate });
+          this.reportAvatar();
         }
       });
 
@@ -191,9 +171,9 @@ export const useGameStore = defineStore('game', {
 
       this.socket.on('playerKicked', (kickedId) => {
         if (this.user?.id === kickedId) {
-          alert('Вас кикнул ведущий.');
+          try { const p = usePlatformStore(); p.toast('Вас исключил ведущий'); } catch { /* ок */ }
           this.logout();
-          window.location.href = '/';
+          try { usePlatformStore().returnToHub(); } catch { window.location.href = '/'; }
         }
       });
 
@@ -235,18 +215,15 @@ export const useGameStore = defineStore('game', {
         this.buzzerResults = newState.buzzerResults || [];
         this.amongUsVotes = newState.amongUsVotes || {};
       });
-
-      this.socket.on('playerReaction', ({ playerId, emoji }) => {
-        this.reactions = { ...this.reactions, [playerId]: emoji };
-        setTimeout(() => {
-          this.reactions = { ...this.reactions, [playerId]: null };
-        }, 2500);
-      });
     },
 
+    // Аватар-строка от хаба может быть URL/data (картинка) или эмодзи/текст
+    avatarIsImage(a) {
+      return !!a && (a.startsWith('http') || a.startsWith('/') || a.startsWith('data:'));
+    },
     getAvatarUrl(avatarPath) {
       if (!avatarPath) return null;
-      if (avatarPath.startsWith('http')) return avatarPath;
+      if (avatarPath.startsWith('http') || avatarPath.startsWith('data:')) return avatarPath;
       return `${this.API_URL}${avatarPath}`;
     },
     getAssetUrl(assetPath) {
@@ -300,7 +277,6 @@ export const useGameStore = defineStore('game', {
     judgeSingleTextAnswer(playerId, isCorrect) { this.socket?.emit('host:judgeSingleTextAnswer', { playerId, isCorrect }) },
     resetGame() { this.socket?.emit('host:resetGame') },
     pauseGlitch() { this.socket?.emit('player:pauseGlitch') },
-    sendReaction(emoji) { this.socket?.emit('player:sendReaction', { emoji }) },
     makeSpectator(playerId) { this.socket?.emit('host:makeSpectator', playerId) },
     promoteSpectator(spectatorId) { this.socket?.emit('host:promoteSpectator', spectatorId) },
     takeSeat() { this.socket?.emit('spectator:takeSeat') }

@@ -31,36 +31,8 @@ app.use(express.static(frontendPath));
 app.use('/auth', authRouter);
 app.use('/api/packs', packsRouter);
 
-// Хранилище аватарок в памяти (до перезапуска сервера)
-const userAvatars = new Map(); 
-
-// Загрузка аватара (Base64)
-app.post('/api/upload/avatar', authenticateToken, express.json({ limit: '2mb' }), (req, res) => {
-  const { avatar } = req.body;
-  if (!avatar) return res.status(400).json({ error: 'No avatar provided' });
-  userAvatars.set(req.user.id, avatar);
-  const host = req.get('host');
-  const protocol = req.protocol;
-  res.json({ success: true, url: `${protocol}://${host}/api/avatar/${req.user.id}` });
-});
-
-module.exports = { userAvatars }; 
-
-// Раздача аватара
-app.get('/api/avatar/:userId', (req, res) => {
-  const avatar = userAvatars.get(req.params.userId);
-  if (!avatar) return res.status(404).end();
-
-  const matches = avatar.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-  if (!matches) {
-    res.set('Content-Type', 'image/png');
-    return res.status(400).end();
-  }
-  const type = matches[1];
-  const data = Buffer.from(matches[2], 'base64');
-  res.set('Content-Type', type);
-  res.send(data);
-});
+// (Своя загрузка аватара удалена: аватар берётся из профиля хаба и приходит
+//  через сокет-событие player:setAvatar.)
 
 // Создание комнаты (HTTP) — только для платформенной сессии (вход через хаб)
 app.post('/api/rooms', authenticateToken, async (req, res) => {

@@ -56,7 +56,7 @@
             <span class="text-[11px] text-hub-muted">хранится до {{ formatExpiry(p.expiresAt) }}</span>
             <button @click="editPack(p.id)" class="hub-btn text-xs">✏ Изменить</button>
             <button @click="packs.exportPack(p.id, p.name)" class="hub-btn text-xs">⬇ ZIP</button>
-            <button @click="removePack(p)" class="hub-btn text-xs !text-hub-negative">🗑</button>
+            <button @click="removePack(p)" class="hub-btn text-xs !text-hub-negative">{{ pendingDelete === p.id ? 'Точно?' : '🗑' }}</button>
           </div>
         </div>
       </section>
@@ -122,8 +122,17 @@ async function newPack() {
 
 function editPack(id) { editingId.value = id }
 
+// Двухкликовое подтверждение вместо нативного confirm
+const pendingDelete = ref(null)
+let pendingTimer = null
 async function removePack(p) {
-  if (!confirm(`Удалить пак «${p.name}»?`)) return
+  if (pendingDelete.value !== p.id) {
+    pendingDelete.value = p.id
+    clearTimeout(pendingTimer)
+    pendingTimer = setTimeout(() => { pendingDelete.value = null }, 3000)
+    return
+  }
+  pendingDelete.value = null
   try { await packs.deletePack(p.id) } catch (e) { error.value = e.message }
 }
 

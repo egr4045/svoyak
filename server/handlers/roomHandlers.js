@@ -175,25 +175,17 @@ function handleRoomEvents(io, socket, user) {
       }
     });
 
-    socket.on('player:updateAvatar', () => {
+    // Игрок сообщает свой платформенный аватар (строка: URL/эмодзи из профиля хаба)
+    socket.on('player:setAvatar', ({ avatar }) => {
+      if (typeof avatar !== 'string' || avatar.length > 512) return;
       const p = room.findParticipant(user.id);
-      if (p) {
-        // Добавляем кэш-бастер, чтобы браузеры перекачали картинку
-        // Используем относительный путь, клиент сам подставит нужный хост
-        p.avatar = `/api/avatar/${user.id}?t=${Date.now()}`;
+      if (p && p.avatar !== avatar) {
+        p.avatar = avatar;
         io.to(room.roomCode).emit('gameStateUpdated', room.state);
-        room.addLog(`Игрок ${user.username} обновил аватар`);
       }
     });
 
     // --- PLAYER-ONLY ACTIONS (наблюдатели отсекаются guard'ом isPlayer) ---
-    socket.on('player:sendReaction', ({ emoji }) => {
-      if (!isPlayer()) return;
-      const ALLOWED = ['😂', '🔥', '👏', '💀', '🤔', '😤'];
-      if (!ALLOWED.includes(emoji)) return;
-      io.to(room.roomCode).emit('playerReaction', { playerId: user.id, emoji });
-    });
-
     socket.on('player:pauseGlitch', () => {
       if (!isPlayer()) return;
       room.handleAction('player:pauseGlitch', null, { io, socket, user });

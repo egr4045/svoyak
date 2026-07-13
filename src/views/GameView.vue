@@ -1,25 +1,19 @@
 <template>
-  <div class="flex flex-col h-screen relative bg-slate-950" style="background: radial-gradient(ellipse at top, #0f172a 0%, #020617 100%)">
+  <div class="flex flex-col h-screen relative" style="background: radial-gradient(ellipse at top, #0e141e 0%, #05080d 60%, #000 100%)">
 
     <!-- Шапка -->
-    <header class="shrink-0 pt-4 pb-3 px-8 w-full flex items-center justify-between border-b border-blue-900/30 bg-black/30 backdrop-blur-sm z-20">
+    <header class="shrink-0 pt-4 pb-3 px-8 w-full flex items-center justify-between border-b border-hub-border bg-hub-deep/50 backdrop-blur-sm z-20">
       <div class="flex items-center gap-4">
-        <h1 class="text-xl font-bold tracking-wide text-hub-text uppercase">
-          Своя Игра <span class="text-hub-accent/40 ml-2">|</span>
-          <span class="text-base font-medium text-hub-accent ml-2">{{ store.roomCode }}</span>
+        <h1 class="text-xl font-black tracking-wide text-hub-text uppercase">
+          🧠 Своя Игра
         </h1>
-        <span v-if="store.isSpectator" class="text-xs font-black uppercase tracking-widest text-slate-300 bg-slate-800 border border-slate-600 rounded-full px-3 py-1">
+        <span v-if="store.isSpectator" class="text-xs font-black uppercase tracking-widest text-hub-text bg-hub-hover border border-hub-border rounded-full px-3 py-1">
           👁 Вы наблюдатель
         </span>
       </div>
       <div class="flex gap-3">
-        <button v-if="isHost" @click="store.resetGame"
-                class="py-1.5 px-3 rounded-lg bg-slate-800/50 border border-slate-700/50 hover:bg-slate-700 text-slate-400 text-sm font-medium transition-colors">
-          Сброс раунда
-        </button>
-        <button @click="leaveRoom" class="py-1.5 px-3 rounded-lg border border-red-900/50 text-red-500 hover:bg-red-900/20 text-sm font-medium transition-colors">
-          Покинуть игру
-        </button>
+        <button v-if="isHost" @click="store.resetGame" class="hub-btn text-sm">Сброс раунда</button>
+        <button @click="leaveRoom" class="hub-btn text-sm !text-hub-negative">Выйти в хаб</button>
       </div>
     </header>
 
@@ -83,6 +77,6 @@ watch(() => store.host, (h) => {
 
 function leaveRoom() {
   store.logout();
-  router.push({ name: 'home' });
+  platform.returnToHub();
 }
 </script>

@@ -1,33 +1,33 @@
 <template>
-  <div v-if="store.activeCell" class="absolute inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-slate-950/90 backdrop-blur-sm rounded-3xl">
-    <div class="bg-slate-900 border border-blue-800/50 rounded-2xl p-4 md:p-6 max-w-4xl w-full shadow-2xl flex flex-col text-center relative max-h-[95vh] overflow-y-auto">
+  <div v-if="store.activeCell" class="absolute inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-black/85 backdrop-blur-sm rounded-3xl">
+    <div class="panel-glass border-hub-accent/40 p-4 md:p-6 max-w-4xl w-full shadow-2xl flex flex-col text-center relative max-h-[95vh] overflow-y-auto">
       
       <!-- Custom UI Alert -->
-      <div v-if="customAlert" class="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-rose-600 border-2 border-rose-400 text-white font-bold px-8 py-4 rounded-2xl shadow-[0_0_30px_rgba(225,29,72,0.8)] animate-pulse transition-all">
+      <div v-if="customAlert" class="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-hub-negative border-2 border-hub-negative text-white font-bold px-8 py-4 rounded-2xl shadow-[0_0_30px_rgba(224,82,74,0.7)] animate-pulse transition-all">
           ⚠️ {{ customAlert }}
       </div>
-      
+
       <!-- Confirm Reveal Dialog -->
-      <div v-if="confirmRevealDialog" class="fixed inset-0 z-[110] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-         <div class="bg-slate-900 border-2 border-rose-500 rounded-3xl p-8 max-w-lg w-full flex flex-col items-center text-center shadow-[0_0_50px_rgba(225,29,72,0.3)]">
-            <h3 class="text-3xl font-black text-rose-500 mb-4 uppercase">Еще не все ответили!</h3>
-            <p class="text-slate-300 text-lg mb-8">Часть игроков еще не успела отправить свой ответ. Вскрываем, лишая их шанса?</p>
+      <div v-if="confirmRevealDialog" class="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+         <div class="panel-glass border-hub-negative/60 p-8 max-w-lg w-full flex flex-col items-center text-center">
+            <h3 class="text-3xl font-black text-hub-negative mb-4 uppercase">Ещё не все ответили!</h3>
+            <p class="text-hub-muted text-lg mb-8">Часть игроков ещё не успела отправить свой ответ. Вскрываем, лишая их шанса?</p>
             <div class="flex gap-4 w-full">
-               <button @click="confirmRevealDialog = false" class="flex-1 py-4 bg-slate-800 hover:bg-slate-700 rounded-xl text-white font-bold transition border border-slate-700">Подождать</button>
-               <button @click="confirmRevealDialog = false; store.revealTextAnswers()" class="flex-1 py-4 bg-rose-600 hover:bg-rose-500 rounded-xl text-white font-black transition shadow-[0_0_20px_rgba(225,29,72,0.5)] border border-rose-400">Вскрываем!</button>
+               <button @click="confirmRevealDialog = false" class="hub-btn flex-1 py-4">Подождать</button>
+               <button @click="confirmRevealDialog = false; store.revealTextAnswers()" class="hub-btn-primary flex-1 py-4 !bg-hub-negative">Вскрываем!</button>
             </div>
          </div>
       </div>
 
-      <div class="inline-block px-4 py-1.5 rounded-lg bg-blue-950/50 text-blue-400 font-medium text-sm mb-6 border border-blue-800/50 mx-auto">
-        {{ store.currentCategoryName }} — 
-        <span class="text-yellow-500 font-bold">
+      <div class="inline-block px-4 py-1.5 rounded-lg bg-hub-deep text-hub-accent font-medium text-sm mb-6 border border-hub-border mx-auto">
+        {{ store.currentCategoryName }} —
+        <span class="text-hub-warning font-bold">
           {{ store.activeBet !== null ? store.activeBet : store.currentQuestion.points }}
         </span>
-        <span class="ml-2 px-2 py-0.5 bg-purple-900/50 text-purple-400 rounded text-xs border border-purple-800" v-if="store.currentQuestion.type === 'cat'">
+        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-if="store.currentQuestion.type === 'cat'">
           Кот в мешке
         </span>
-        <span class="ml-2 px-2 py-0.5 bg-yellow-900/50 text-yellow-400 rounded text-xs border border-yellow-800" v-else-if="store.currentQuestion.type === 'auction'">
+        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-else-if="store.currentQuestion.type === 'auction'">
           Аукцион
         </span>
       </div>
@@ -43,53 +43,53 @@
                  @resumeTimer="v => store.resumeAmongUsTimer(v)"
                  @awardWinner="v => store.awardSketchWinner(v)" />      <!-- Обычный блок ввода ответов (text_input / text_inputting / text_judging) -->
       <div v-if="store.currentQuestion.type === 'text_input' || store.questionStatus === 'text_inputting' || store.questionStatus === 'text_judging'" class="w-full flex flex-col items-center">
-        <div v-if="store.questionStatus === 'text_inputting'" class="w-full bg-slate-950/50 p-6 rounded-xl border border-slate-800 mb-8 max-w-2xl mx-auto">
-          
+        <div v-if="store.questionStatus === 'text_inputting'" class="w-full bg-hub-deep/50 p-6 rounded-xl border border-hub-border mb-8 max-w-2xl mx-auto">
+
           <!-- Для Ведущего: список игроков и статус -->
           <div v-if="isHost" class="flex flex-col gap-4">
-            <h4 class="text-xl font-bold text-slate-300 mb-4">Ожидание ответов:</h4>
+            <h4 class="text-xl font-bold text-hub-text mb-4">Ожидание ответов:</h4>
             <div class="flex gap-4 justify-center flex-wrap">
-              <div v-for="player in store.players" :key="player.id" class="flex flex-col items-center gap-2 bg-slate-800/50 p-3 rounded-lg border border-slate-700 w-32 shadow-inner">
-                <span class="text-sm font-bold text-slate-300">{{ player.name }}</span>
-                <span v-if="store.textAnswers[player.id]" class="text-emerald-400 font-bold text-xs bg-emerald-900/30 border border-emerald-500/50 px-2 py-1 rounded">✔ ОТВЕТИЛ</span>
-                <span v-else class="text-slate-500 text-xs font-bold animate-pulse">ПИШЕТ...</span>
+              <div v-for="player in store.players" :key="player.id" class="flex flex-col items-center gap-2 hub-card p-3 w-32">
+                <span class="text-sm font-bold text-hub-text">{{ player.name }}</span>
+                <span v-if="store.textAnswers[player.id]" class="text-hub-positive font-bold text-xs bg-hub-positive/15 border border-hub-positive/40 px-2 py-1 rounded">✔ ОТВЕТИЛ</span>
+                <span v-else class="text-hub-muted text-xs font-bold animate-pulse">ПИШЕТ…</span>
               </div>
             </div>
-            <button @click="requestRevealTextAnswers" class="mt-8 py-4 px-8 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black tracking-widest uppercase transition-all shadow-[0_0_20px_rgba(37,99,235,0.4)] flex items-center justify-center gap-3 w-full hover:scale-[1.02]"><Eye class="w-6 h-6" /> ВСКРЫТЬ ОТВЕТЫ</button>
+            <button @click="requestRevealTextAnswers" class="hub-btn-primary mt-8 py-4 px-8 tracking-widest uppercase flex items-center justify-center gap-3 w-full hover:scale-[1.02]"><Eye class="w-6 h-6" /> Вскрыть ответы</button>
           </div>
-          
+
           <!-- Для Игрока (право ответа) -->
           <div v-else-if="canIAnswer" class="flex flex-col items-center gap-6">
-            <p class="text-slate-400 text-lg">Введите ваш ответ на вопрос:</p>
-            <div v-if="store.textAnswers[store.user?.id]" class="w-full py-5 bg-emerald-900/40 border-2 border-emerald-500/50 text-emerald-400 rounded-xl text-xl font-bold text-center shadow-inner">
-              Ответ отправлен! Ожидание ведущего...
+            <p class="text-hub-muted text-lg">Введите ваш ответ на вопрос:</p>
+            <div v-if="store.textAnswers[store.user?.id]" class="w-full py-5 bg-hub-positive/15 border-2 border-hub-positive/50 text-hub-positive rounded-xl text-xl font-bold text-center">
+              Ответ отправлен! Ожидание ведущего…
             </div>
             <div v-else class="w-full relative group">
-              <input type="text" v-model="myTextAnswer" @keydown.enter="submitMyAnswer" placeholder="Текст ответа..." class="w-full px-6 py-5 bg-slate-900 border-2 border-slate-600 rounded-xl text-white text-xl outline-none focus:border-blue-500 focus:shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-all font-medium" />
-              <button @click="submitMyAnswer" class="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-500 text-white font-bold px-8 rounded-lg transition-colors text-lg">Отправить</button>
+              <input type="text" v-model="myTextAnswer" @keydown.enter="submitMyAnswer" placeholder="Текст ответа…" class="w-full px-6 py-5 bg-hub-deep border-2 border-hub-border rounded-xl text-hub-text text-xl outline-none focus:border-hub-accent transition-all font-medium" />
+              <button @click="submitMyAnswer" class="absolute right-2 top-2 bottom-2 hub-btn-primary px-8 text-lg">Отправить</button>
             </div>
           </div>
 
           <!-- Для Наблюдателя -->
-          <div v-else class="text-slate-400 text-lg font-medium italic py-10 border border-slate-700 rounded-xl bg-slate-900/50 shadow-inner w-full">
-            Игроки набирают ответы. Ожидайте...
+          <div v-else class="text-hub-muted text-lg font-medium italic py-10 border border-hub-border rounded-xl bg-hub-deep/50 w-full">
+            Игроки набирают ответы. Ожидайте…
           </div>
 
         </div>
         <div v-if="store.questionStatus === 'text_judging'" class="w-full mb-8">
           <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div v-for="(answer, pId) in store.textAnswers" :key="pId" class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex flex-col items-center">
-              <span class="text-slate-400 text-sm mb-2 font-bold">{{ store.players.find(p => p.id == pId)?.name }}</span>
-              <span class="text-xl font-bold text-white mb-4">"{{ answer }}"</span>
+            <div v-for="(answer, pId) in store.textAnswers" :key="pId" class="hub-card p-4 flex flex-col items-center">
+              <span class="text-hub-muted text-sm mb-2 font-bold">{{ store.players.find(p => p.id == pId)?.name }}</span>
+              <span class="text-xl font-bold text-hub-text mb-4">"{{ answer }}"</span>
               <div v-if="isHost" class="flex gap-2 w-full">
-                <button @click="store.judgeSingleTextAnswer(pId, true)" class="flex-1 py-2 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600 rounded-lg"><Check class="w-5 h-5 mx-auto"/></button>
-                <button @click="store.judgeSingleTextAnswer(pId, false)" class="flex-1 py-2 bg-rose-600/20 text-rose-400 hover:bg-rose-600 rounded-lg"><X class="w-5 h-5 mx-auto"/></button>
+                <button @click="store.judgeSingleTextAnswer(pId, true)" class="flex-1 py-2 bg-hub-positive/20 text-hub-positive hover:bg-hub-positive hover:text-white rounded-lg"><Check class="w-5 h-5 mx-auto"/></button>
+                <button @click="store.judgeSingleTextAnswer(pId, false)" class="flex-1 py-2 bg-hub-negative/20 text-hub-negative hover:bg-hub-negative hover:text-white rounded-lg"><X class="w-5 h-5 mx-auto"/></button>
               </div>
             </div>
           </div>
           <div class="mt-8 flex justify-center gap-4">
-            <button v-if="isHost && store.currentQuestion.type === 'among_us'" @click="store.startAmongUsTimer" class="py-3 px-8 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold transition shadow-[0_0_15px_rgba(225,29,72,0.5)]">Начать обсуждение (Таймер)</button>
-            <button v-else-if="isHost" @click="store.closeQuestion" class="py-3 px-8 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300">Закрыть вопрос</button>
+            <button v-if="isHost && store.currentQuestion.type === 'among_us'" @click="store.startAmongUsTimer" class="hub-btn-primary py-3 px-8">Начать обсуждение (Таймер)</button>
+            <button v-else-if="isHost" @click="store.closeQuestion" class="hub-btn py-3 px-8">Закрыть вопрос</button>
           </div>
         </div>
       </div>
@@ -97,14 +97,14 @@
       <div v-if="['reading','buzzer_countdown','buzzer_active','buzzer_results','answering'].includes(store.questionStatus)" class="w-full">
         
         <div class="mb-4 h-auto min-h-[48px] flex justify-center items-center w-full">
-          <div v-if="store.questionStatus === 'reading'" class="text-slate-400 flex flex-col items-center gap-2 animate-pulse mt-4">
-            <Mic class="w-8 h-8 text-blue-400 mb-2" /> 
-            <span class="text-xl">Ведущий читает вопрос...</span>
-            <span v-if="!isHost" class="text-sm text-slate-500 mt-2">Приготовьтесь! Скоро начнется отсчет.</span>
+          <div v-if="store.questionStatus === 'reading'" class="text-hub-muted flex flex-col items-center gap-2 animate-pulse mt-4">
+            <Mic class="w-8 h-8 text-hub-accent mb-2" />
+            <span class="text-xl">Ведущий читает вопрос…</span>
+            <span v-if="!isHost" class="text-sm text-hub-muted mt-2">Приготовьтесь! Скоро начнётся отсчёт.</span>
           </div>
 
           <div v-else-if="store.questionStatus === 'buzzer_countdown'" class="text-center w-full relative h-40 flex items-center justify-center">
-             <div :key="countdownNumber" class="text-[12rem] font-black text-amber-500 absolute inset-0 flex items-center justify-center pointer-events-none drop-shadow-[0_0_50px_rgba(245,158,11,0.8)] animate-pulse" style="animation-duration: 1s;">
+             <div :key="countdownNumber" class="text-[12rem] font-black text-hub-warning absolute inset-0 flex items-center justify-center pointer-events-none drop-shadow-[0_0_50px_rgba(232,161,58,0.8)] animate-pulse" style="animation-duration: 1s;">
                {{ countdownNumber > 0 ? countdownNumber : 'ГОУ!' }}
              </div>
           </div>
@@ -156,9 +156,9 @@
            пуск баззера, верно/неверно, вскрытие/рулетка для всех типов, медиа, закрыть. -->
 
       <Transition name="slide-up">
-        <div v-show="store.showAnswer" class="mt-4 p-6 bg-slate-800/80 border-2 border-amber-500/30 rounded-2xl relative shadow-xl">
-          <p class="text-xs font-black text-amber-500 uppercase tracking-widest mb-2 opacity-70">Правильный ответ:</p>
-          <p class="text-3xl md:text-5xl font-black text-amber-400 drop-shadow-[0_0_10px_rgba(251,191,36,0.5)]">{{ store.currentQuestion.a }}</p>
+        <div v-show="store.showAnswer" class="mt-4 p-6 bg-hub-deep/80 border-2 border-hub-accent/30 rounded-2xl relative shadow-xl">
+          <p class="text-xs font-black text-hub-accent uppercase tracking-widest mb-2 opacity-70">Правильный ответ:</p>
+          <p class="text-3xl md:text-5xl font-black text-hub-accent drop-shadow-[0_0_10px_rgba(73,160,90,0.5)]">{{ store.currentQuestion.a }}</p>
         </div>
       </Transition>
 

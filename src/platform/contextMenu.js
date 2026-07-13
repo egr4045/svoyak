@@ -75,11 +75,9 @@ export function showParticipantMenu(target, event, role = 'player') {
     }
 
     items.push({
-      label: '🚪 Кикнуть',
+      label: '🚪 Кикнуть из комнаты',
       danger: true,
-      action: () => {
-        if (confirm(`Кикнуть ${target.name}?`)) game.kickPlayer(target.id)
-      }
+      action: () => { game.kickPlayer(target.id); social.toast(`${target.name} исключён`) }
     })
   }
 

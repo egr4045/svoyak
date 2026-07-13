@@ -214,6 +214,12 @@ export const usePlatformStore = defineStore('platform', {
       try { getPlatform()?.ui.toast({ type: 'system', title: 'Своя игра', content: text }) } catch { /* ок */ }
     },
 
+    // Возврат в хаб (в SDK нет метода — уходим по URL хаба)
+    returnToHub() {
+      const url = import.meta.env.VITE_HUB_URL || 'https://mygame-quiz.ru'
+      window.location.href = url
+    },
+
     dispose() {
       this._unsubs.forEach(u => { try { u() } catch { /* ок */ } })
       this._unsubs = []

@@ -9,7 +9,8 @@
                store.amongUsVotes[store.user?.id] === player.id ? 'bg-red-500/20 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.2)]' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20',
                player.id === store.user?.id ? 'opacity-50 pointer-events-none grayscale' : ''
              ]">
-          <img :src="player.avatar" class="w-16 h-16 rounded-2xl mb-3 shadow-lg group-hover:scale-110 transition-transform" />
+          <img v-if="player.avatar && store.avatarIsImage(player.avatar)" :src="store.getAvatarUrl(player.avatar)" class="w-16 h-16 rounded-2xl mb-3 shadow-lg group-hover:scale-110 transition-transform" />
+          <div v-else class="w-16 h-16 rounded-2xl mb-3 bg-hub-deep flex items-center justify-center text-3xl shadow-lg">{{ player.avatar || (player.name || '?').charAt(0).toUpperCase() }}</div>
           <span class="font-black text-xs text-center break-words w-full">{{ player.name }}</span>
           
           <div v-if="store.amongUsResult && player.id === store.imposterId" class="absolute inset-0 bg-red-600/40 flex items-center justify-center backdrop-blur-sm">
