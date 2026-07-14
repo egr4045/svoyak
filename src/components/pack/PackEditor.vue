@@ -50,6 +50,7 @@
                 <span class="text-[9px] font-bold uppercase tracking-wide mt-0.5" :style="{ color: TYPE_META[q.type]?.tone }">{{ TYPE_META[q.type]?.short }}</span>
                 <span v-if="q.mediaSrc" class="absolute top-1 right-1 text-[9px]">📎</span>
                 <span v-if="isBlank(q)" class="absolute top-1 left-1 text-[9px]" title="Не заполнен">⚠</span>
+                <span @click.stop="openTest(cat, qi)" class="absolute bottom-0.5 right-1 text-[11px] text-hub-accent hover:scale-125 transition-transform cursor-pointer" title="Быстрый тест">▶</span>
               </button>
               <!-- Добавить ячейку -->
               <button @click="addQuestion(cat)" class="w-24 h-[68px] rounded-lg border border-dashed border-hub-border text-hub-muted hover:text-hub-accent hover:border-hub-accent text-2xl font-thin">+</button>
@@ -66,12 +67,16 @@
     </div>
 
     <!-- Редактор одного вопроса -->
-    <div v-if="editing" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="editing = null">
-      <div class="panel-glass w-full max-w-lg p-6">
-        <div class="flex items-center justify-between mb-4">
+    <div v-if="editing" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="closeEditing">
+      <div class="panel-glass w-full p-6 max-h-[92vh] overflow-y-auto" :class="testing ? 'max-w-6xl' : 'max-w-lg'">
+        <div class="flex items-center justify-between mb-4 gap-2">
           <h3 class="font-black text-hub-accent">Вопрос за {{ editQ.points }}</h3>
-          <button @click="editing = null" class="hub-btn text-xs">Готово</button>
+          <div class="flex gap-2">
+            <button @click="testing = !testing" class="hub-btn text-xs" :class="testing ? '!text-hub-accent' : ''">🧪 {{ testing ? 'Скрыть тест' : 'Тест' }}</button>
+            <button @click="closeEditing" class="hub-btn text-xs">Готово</button>
+          </div>
         </div>
+        <div :class="testing ? 'grid grid-cols-1 lg:grid-cols-2 gap-6 items-start' : ''">
         <div class="flex flex-col gap-3">
           <div class="flex gap-2">
             <label class="flex-1">
@@ -140,6 +145,10 @@
 
           <button @click="deleteQuestion" class="hub-btn text-xs !text-hub-negative self-start mt-2">🗑 Удалить вопрос</button>
         </div>
+        <div v-if="testing" class="min-w-0">
+          <QuickTestPanel :question="editQ" :interactive="true" />
+        </div>
+        </div>
       </div>
     </div>
   </div>
@@ -149,6 +158,7 @@
 import { reactive, ref, computed, onMounted } from 'vue'
 import { usePacksStore } from '../../stores/packs'
 import { getPlatform } from '../../platform/sdk'
+import QuickTestPanel from './quicktest/QuickTestPanel.vue'
 
 const props = defineProps({ packId: { type: String, required: true } })
 const emit = defineEmits(['close', 'saved'])
@@ -187,6 +197,7 @@ const MEDIA_TYPES = ['media', 'karaoke', 'snippet']
 const local = reactive({ name: '', data: { rounds: [] } })
 const activeRound = ref(0)
 const editing = ref(null) // { cat, qi }
+const testing = ref(false) // режим быстрого теста в модалке
 const saving = ref(false)
 const msg = ref(''); const msgErr = ref(false)
 
@@ -279,7 +290,9 @@ function addQuestion(cat) {
   cat.questions.push(q)
   openQuestion(cat, cat.questions.length - 1)
 }
-function openQuestion(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]) }
+function openQuestion(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]); testing.value = false }
+function openTest(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]); testing.value = true }
+function closeEditing() { editing.value = null; testing.value = false }
 function deleteQuestion() {
   editing.value.cat.questions.splice(editing.value.qi, 1)
   editing.value = null
