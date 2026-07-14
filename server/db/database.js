@@ -53,6 +53,8 @@ const db = new sqlite3.Database(dbPath, (err) => {
         created_at INTEGER NOT NULL
       )`);
       db.run(`CREATE INDEX IF NOT EXISTS idx_packs_owner ON packs(owner_id)`);
+      // touched_at: TTL считаем от последнего изменения, а не от создания (активный пак не протухает)
+      db.run(`ALTER TABLE packs ADD COLUMN touched_at INTEGER`, () => { /* колонка уже есть — ок */ });
     });
   }
 });

@@ -27,39 +27,46 @@ router.use(authenticateToken, (req, res, next) => {
 function forEachQuestion(data, fn) {
   (data?.rounds || []).forEach(r => (r.categories || []).forEach(c => (c.questions || []).forEach(fn)));
 }
+// Применяет map ко всем медиа-полям вопроса, ВКЛЮЧАЯ вложенные объекты тир-листа (q.items[].mediaSrc).
+// map(url) → новая строка или null (не менять).
+function mapQuestionMedia(q, map) {
+  MEDIA_FIELDS.forEach(f => {
+    if (typeof q[f] === 'string') { const v = map(q[f]); if (v != null) q[f] = v; }
+  });
+  if (Array.isArray(q.items)) q.items.forEach(it => {
+    if (it && typeof it.mediaSrc === 'string') { const v = map(it.mediaSrc); if (v != null) it.mediaSrc = v; }
+  });
+}
 // URL медиа пака → относительное имя (media/<file>) для переносимого ZIP
 function toPortable(data, packId) {
   const clone = JSON.parse(JSON.stringify(data));
   const prefix = `/packs-media/${packId}/`;
-  forEachQuestion(clone, q => MEDIA_FIELDS.forEach(f => {
-    if (typeof q[f] === 'string' && q[f].startsWith(prefix)) q[f] = 'media/' + q[f].slice(prefix.length);
-  }));
+  forEachQuestion(clone, q => mapQuestionMedia(q, s => s.startsWith(prefix) ? 'media/' + s.slice(prefix.length) : null));
   return clone;
 }
 // media/<file> → абсолютный URL медиа нового пака
 function fromPortable(data, newId) {
   const clone = JSON.parse(JSON.stringify(data));
-  forEachQuestion(clone, q => MEDIA_FIELDS.forEach(f => {
-    if (typeof q[f] === 'string' && q[f].startsWith('media/')) q[f] = `/packs-media/${newId}/` + q[f].slice('media/'.length);
-  }));
+  forEachQuestion(clone, q => mapQuestionMedia(q, s => s.startsWith('media/') ? `/packs-media/${newId}/` + s.slice('media/'.length) : null));
   return clone;
 }
 function rmPackDir(id) {
   try { fs.rmSync(packDir(id), { recursive: true, force: true }); } catch { /* нет папки — ок */ }
 }
-// Прунинг протухших паков (по created_at) + их медиа
+// Прунинг протухших паков (по последнему изменению) + их медиа
 function pruneExpired() {
   const cutoff = Date.now() - TTL_MS;
-  db.all('SELECT id FROM packs WHERE created_at < ?', [cutoff], (err, rows) => {
+  db.all('SELECT id FROM packs WHERE COALESCE(touched_at, created_at) < ?', [cutoff], (err, rows) => {
     if (err || !rows?.length) return;
     rows.forEach(r => rmPackDir(r.id));
-    db.run('DELETE FROM packs WHERE created_at < ?', [cutoff]);
+    db.run('DELETE FROM packs WHERE COALESCE(touched_at, created_at) < ?', [cutoff]);
   });
 }
 setInterval(pruneExpired, 6 * 60 * 60 * 1000).unref?.();
 pruneExpired();
 
-const rowToMeta = (r) => ({ id: r.id, name: r.name, createdAt: r.created_at, expiresAt: r.created_at + TTL_MS });
+// expiresAt считаем от последнего изменения (touched_at), фолбэк на created_at
+const rowToMeta = (r) => { const base = r.touched_at || r.created_at; return { id: r.id, name: r.name, createdAt: r.created_at, expiresAt: base + TTL_MS }; };
 
 // --- CRUD ----------------------------------------------------------------
 // Список моих паков (без тела data)
@@ -84,8 +91,9 @@ router.post('/', (req, res) => {
   const name = (req.body?.name || '').toString().slice(0, 120) || 'Без названия';
   const data = req.body?.data || { rounds: [] };
   const id = genId();
-  db.run('INSERT INTO packs (id, owner_id, name, data, created_at) VALUES (?, ?, ?, ?, ?)',
-    [id, req.user.platformId, name, JSON.stringify(data), Date.now()],
+  const now = Date.now();
+  db.run('INSERT INTO packs (id, owner_id, name, data, created_at, touched_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [id, req.user.platformId, name, JSON.stringify(data), now, now],
     (err) => {
       if (err) return res.status(500).json({ error: 'DB error' });
       db.get('SELECT * FROM packs WHERE id = ?', [id], (e2, row) => res.status(201).json({ ...rowToMeta(row), data: JSON.parse(row.data) }));
@@ -99,7 +107,7 @@ router.put('/:id', (req, res) => {
     if (!row) return res.status(404).json({ error: 'Pack not found' });
     const name = (req.body?.name || 'Без названия').toString().slice(0, 120);
     const data = req.body?.data || { rounds: [] };
-    db.run('UPDATE packs SET name = ?, data = ? WHERE id = ?', [name, JSON.stringify(data), req.params.id],
+    db.run('UPDATE packs SET name = ?, data = ?, touched_at = ? WHERE id = ?', [name, JSON.stringify(data), Date.now(), req.params.id],
       (e2) => e2 ? res.status(500).json({ error: 'DB error' }) : res.json({ ok: true }));
   });
 });
@@ -170,8 +178,9 @@ router.post('/import', (req, res) => {
       }
     });
     const name = (parsed.name || 'Импортированный пак').toString().slice(0, 120);
-    db.run('INSERT INTO packs (id, owner_id, name, data, created_at) VALUES (?, ?, ?, ?, ?)',
-      [newId, req.user.platformId, name, JSON.stringify(data), Date.now()],
+    const now = Date.now();
+    db.run('INSERT INTO packs (id, owner_id, name, data, created_at, touched_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [newId, req.user.platformId, name, JSON.stringify(data), now, now],
       (err) => {
         if (err) { rmPackDir(newId); return res.status(500).json({ error: 'DB error' }); }
         res.status(201).json({ id: newId, name });
@@ -191,4 +200,4 @@ function loadPackForRoom(packId, ownerPlatformId) {
   });
 }
 
-module.exports = { packsRouter: router, loadPackForRoom, MEDIA_ROOT };
+module.exports = { packsRouter: router, loadPackForRoom, MEDIA_ROOT, toPortable, fromPortable };

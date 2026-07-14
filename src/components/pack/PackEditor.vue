@@ -5,10 +5,15 @@
       <div class="flex items-center gap-3 mb-4 flex-wrap">
         <input v-model="local.name" class="hub-input flex-1 min-w-[200px] text-lg font-bold" placeholder="Название пака" />
         <button @click="save" :disabled="saving" class="hub-btn-primary text-sm disabled:opacity-50">{{ saving ? 'Сохраняем…' : '💾 Сохранить' }}</button>
+        <span class="text-xs w-28" :class="savedStatus === 'error' ? 'text-hub-negative' : 'text-hub-muted'">{{ statusText }}</span>
         <button @click="exportPack" class="hub-btn text-sm">⬇ ZIP</button>
         <button @click="$emit('close')" class="hub-btn text-sm">✕ Закрыть</button>
       </div>
-      <p v-if="msg" class="text-sm font-bold mb-3" :class="msgErr ? 'text-hub-negative' : 'text-hub-positive'">{{ msg }}</p>
+      <p v-if="msg" class="text-sm font-bold mb-2" :class="msgErr ? 'text-hub-negative' : 'text-hub-positive'">{{ msg }}</p>
+      <p class="text-xs text-hub-muted mb-3 flex flex-wrap gap-x-3 gap-y-1">
+        <span>📦 {{ packStats.rounds }} раундов · {{ packStats.questions }} вопросов · {{ packStats.types }} типов · ~{{ packStats.minutes }} мин</span>
+        <span v-if="packStats.blank" class="text-hub-warning">⚠ {{ packStats.blank }} не заполнено</span>
+      </p>
 
       <!-- Вкладки раундов -->
       <div class="flex items-center gap-1 border-b border-hub-border mb-5 flex-wrap">
@@ -26,6 +31,7 @@
       <template v-if="round">
         <div class="flex items-center gap-2 mb-4">
           <input v-model="round.name" class="hub-input flex-1 font-bold" placeholder="Название раунда" />
+          <button @click="duplicateRound(activeRound)" class="hub-btn text-xs">⧉ Дублировать</button>
           <button @click="removeRound(activeRound)" class="hub-btn text-xs !text-hub-negative">Удалить раунд</button>
         </div>
 
@@ -36,7 +42,10 @@
             <div class="w-44 shrink-0 bg-gradient-to-r from-hub-deep to-hub-solid border-l-4 border-hub-accent rounded-r-lg p-2 flex flex-col justify-between"
                  @contextmenu="catMenu(round, ci, $event)">
               <input v-model="cat.category" class="bg-transparent outline-none text-sm font-black text-hub-text w-full" placeholder="Категория" />
-              <button @click="removeCategory(round, ci)" class="text-[10px] text-hub-negative hover:brightness-125 self-start mt-1">✕ строку</button>
+              <div class="flex gap-2 mt-1">
+                <button @click="duplicateCategory(round, ci)" class="text-[10px] text-hub-muted hover:text-hub-accent" title="Дублировать строку">⧉ копия</button>
+                <button @click="removeCategory(round, ci)" class="text-[10px] text-hub-negative hover:brightness-125">✕ строку</button>
+              </div>
             </div>
 
             <!-- Ячейки-вопросы -->
@@ -44,12 +53,17 @@
               <button v-for="(q, qi) in cat.questions" :key="qi"
                       @click="openQuestion(cat, qi)"
                       @contextmenu="cellMenu(cat, qi, $event)"
-                      class="w-24 h-[68px] rounded-lg border flex flex-col items-center justify-center transition-all hover:scale-[1.03] relative"
+                      class="group w-24 h-[68px] rounded-lg border flex flex-col items-center justify-center transition-all hover:scale-[1.03] relative"
                       :class="isBlank(q) ? 'border-dashed border-hub-warning/50 bg-hub-warning/5' : 'border-hub-border bg-hub-deep/60 hover:border-hub-accent'">
                 <span class="text-xl font-black" :style="{ color: 'var(--c-accent)' }">{{ q.points }}</span>
                 <span class="text-[9px] font-bold uppercase tracking-wide mt-0.5" :style="{ color: TYPE_META[q.type]?.tone }">{{ TYPE_META[q.type]?.short }}</span>
                 <span v-if="q.mediaSrc" class="absolute top-1 right-1 text-[9px]">📎</span>
                 <span v-if="isBlank(q)" class="absolute top-1 left-1 text-[9px]" title="Не заполнен">⚠</span>
+                <!-- Ховер-тулбар: дублировать/удалить без ПКМ-меню -->
+                <div class="absolute inset-x-0 top-0 flex justify-center gap-3 pt-0.5 rounded-t-lg bg-hub-deep/80 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span @click.stop="duplicateQuestion(cat, qi)" class="text-[12px] text-hub-text hover:text-hub-accent cursor-pointer" title="Дублировать">⧉</span>
+                  <span @click.stop="cat.questions.splice(qi, 1)" class="text-[12px] text-hub-negative hover:brightness-150 cursor-pointer" title="Удалить">🗑</span>
+                </div>
                 <span @click.stop="openTest(cat, qi)" class="absolute bottom-0.5 right-1 text-[11px] text-hub-accent hover:scale-125 transition-transform cursor-pointer" title="Быстрый тест">▶</span>
               </button>
               <!-- Добавить ячейку -->
@@ -97,12 +111,20 @@
           <input v-if="A_TYPES.includes(editQ.type)" v-model="editQ.a" class="hub-input text-sm w-full" :placeholder="aPlaceholder" />
 
           <!-- Медиа: обычное медиа, реф-аудио караоке, фрагмент -->
-          <div v-if="MEDIA_TYPES.includes(editQ.type)" class="flex items-center gap-2 flex-wrap">
-            <label class="hub-btn text-xs cursor-pointer">
-              {{ editQ.mediaSrc ? '🔁 Заменить' : '📎 Загрузить' }} {{ editQ.type === 'karaoke' ? 'реф-аудио' : editQ.type === 'snippet' ? 'фрагмент' : 'медиа' }}
-              <input type="file" class="hidden" accept="image/*,audio/*,video/*" @change="onMedia($event, editQ)" />
-            </label>
-            <span v-if="editQ.mediaSrc" class="text-xs text-hub-positive">✓ {{ editQ.mediaType }} прикреплён</span>
+          <div v-if="MEDIA_TYPES.includes(editQ.type)" class="flex flex-col gap-2">
+            <div class="flex items-center gap-2 flex-wrap">
+              <label class="hub-btn text-xs cursor-pointer">
+                {{ editQ.mediaSrc ? '🔁 Заменить' : '📎 Загрузить' }} {{ editQ.type === 'karaoke' ? 'реф-аудио' : editQ.type === 'snippet' ? 'фрагмент' : 'медиа' }}
+                <input type="file" class="hidden" accept="image/*,audio/*,video/*" @change="onMedia($event, editQ)" />
+              </label>
+              <button v-if="editQ.mediaSrc" @click="removeMedia(editQ)" class="hub-btn text-xs !text-hub-negative">✕ убрать</button>
+            </div>
+            <!-- Живое превью того, что загрузили -->
+            <div v-if="editQ.mediaSrc" class="rounded-lg overflow-hidden border border-hub-border bg-hub-deep/40 p-2 max-w-sm">
+              <img v-if="editQ.mediaType === 'image'" :src="mediaUrl(editQ.mediaSrc)" class="max-h-40 rounded" />
+              <audio v-else-if="editQ.mediaType === 'audio'" :src="mediaUrl(editQ.mediaSrc)" controls class="w-full" />
+              <video v-else-if="editQ.mediaType === 'video'" :src="mediaUrl(editQ.mediaSrc)" controls class="max-h-40 w-full rounded" />
+            </div>
           </div>
 
           <!-- Число: тип значения -->
@@ -133,12 +155,14 @@
           <div v-if="editQ.type === 'tierlist'" class="flex flex-col gap-2">
             <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Объекты для оценки</span>
             <div v-for="(it, ii) in editQ.items" :key="ii" class="flex gap-2 items-center">
+              <img v-if="it.mediaSrc" :src="mediaUrl(it.mediaSrc)" class="w-8 h-8 rounded object-cover border border-hub-border shrink-0" />
               <input v-model="it.label" class="hub-input text-sm flex-1" placeholder="Название объекта" />
               <label class="hub-btn text-xs cursor-pointer" :title="it.mediaSrc ? 'Заменить картинку' : 'Картинка объекта'">
-                {{ it.mediaSrc ? '🖼✓' : '📎' }}
+                {{ it.mediaSrc ? '🔁' : '📎' }}
                 <input type="file" class="hidden" accept="image/*" @change="onItemMedia($event, it)" />
               </label>
-              <button @click="editQ.items.splice(ii, 1)" class="hub-btn text-xs !text-hub-negative">✕</button>
+              <button v-if="it.mediaSrc" @click="removeMedia(it)" class="hub-btn text-xs" title="Убрать картинку">🚫</button>
+              <button @click="editQ.items.splice(ii, 1)" class="hub-btn text-xs !text-hub-negative" title="Удалить объект">✕</button>
             </div>
             <button @click="editQ.items.push({ label: '' })" class="hub-btn text-xs self-start">+ Объект</button>
           </div>
@@ -155,8 +179,9 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
 import { usePacksStore } from '../../stores/packs'
+import { useGameStore } from '../../stores/game'
 import { getPlatform } from '../../platform/sdk'
 import QuickTestPanel from './quicktest/QuickTestPanel.vue'
 
@@ -259,12 +284,35 @@ function isBlank(q) {
   }
 }
 
-// Ленивая инициализация полей-массивов при выборе типа (addQuestion всегда делает text)
+// Ленивая инициализация полей-массивов + умные дефолты при выборе типа
 function ensureTypeFields(q) {
-  if (q.type === 'alias' && !Array.isArray(q.words)) q.words = ['']
+  if (q.type === 'alias') { if (!Array.isArray(q.words)) q.words = ['']; if (q.timerSec == null) q.timerSec = 60 }
   if (q.type === 'tierlist' && !Array.isArray(q.items)) q.items = [{ label: '' }]
   if (q.type === 'number' && !q.numberKind) q.numberKind = 'number'
 }
+
+// Абсолютный URL медиа для превью в редакторе
+const game = useGameStore()
+function mediaUrl(src) {
+  if (!src) return ''
+  if (src.startsWith('http') || src.startsWith('data:')) return src
+  return `${game.API_URL}${src}`
+}
+function removeMedia(target) { target.mediaSrc = null; target.mediaType = null }
+
+// «Пак в цифрах»
+const packStats = computed(() => {
+  let q = 0, blank = 0; const types = new Set()
+  local.data.rounds.forEach(r => (r.categories || []).forEach(c => (c.questions || []).forEach(x => {
+    q++; if (isBlank(x)) blank++; types.add(x.type)
+  })))
+  return { rounds: local.data.rounds.length, questions: q, blank, types: types.size, minutes: Math.max(1, Math.round(q * 0.75)) }
+})
+const statusText = computed(() => ({ dirty: '● есть изменения', saving: 'Сохраняем…', saved: '✓ Сохранено', error: '⚠ ошибка' }[savedStatus.value] || ''))
+
+const loaded = ref(false)
+const savedStatus = ref('') // '' | 'dirty' | 'saving' | 'saved' | 'error'
+let saveTimer = null
 
 onMounted(async () => {
   try {
@@ -272,7 +320,25 @@ onMounted(async () => {
     local.name = pack.name
     local.data = pack.data && Array.isArray(pack.data.rounds) ? pack.data : { rounds: [] }
   } catch (e) { flash(e.message, true) }
+  finally { loaded.value = true }
 })
+
+// Автосохранение: debounced тихий PUT (бампает touched_at → пак не протухает по TTL)
+watch(() => [local.name, local.data], () => {
+  if (!loaded.value) return
+  savedStatus.value = 'dirty'
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(autosave, 1500)
+}, { deep: true })
+
+async function autosave() {
+  savedStatus.value = 'saving'
+  try {
+    await packs.updatePack(props.packId, local.name || 'Без названия', { rounds: local.data.rounds }, { silent: true })
+    savedStatus.value = 'saved'
+  } catch { savedStatus.value = 'error' }
+}
+onBeforeUnmount(() => clearTimeout(saveTimer))
 
 function addRound() {
   local.data.rounds.push({ name: `Раунд ${local.data.rounds.length + 1}`, categories: [] })
@@ -369,11 +435,13 @@ async function onItemMedia(e, item) {
 
 async function save() {
   saving.value = true
+  clearTimeout(saveTimer)
   try {
     await packs.updatePack(props.packId, local.name || 'Без названия', { rounds: local.data.rounds })
+    savedStatus.value = 'saved'
     flash('Сохранено')
     emit('saved')
-  } catch (e) { flash(e.message, true) }
+  } catch (e) { savedStatus.value = 'error'; flash(e.message, true) }
   finally { saving.value = false }
 }
 

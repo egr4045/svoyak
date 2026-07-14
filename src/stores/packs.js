@@ -44,12 +44,12 @@ export const usePacksStore = defineStore('packs', {
       return pack
     },
 
-    async updatePack(id, name, data) {
+    async updatePack(id, name, data, { silent = false } = {}) {
       const res = await fetch(`${this._base()}/${id}`, {
         method: 'PUT', headers: this._headers(), body: JSON.stringify({ name, data })
       })
       if (!res.ok) throw new Error('Не удалось сохранить пак')
-      await this.fetchPacks()
+      if (!silent) await this.fetchPacks() // autosave не дёргает список каждые пару секунд
     },
 
     async deletePack(id) {
