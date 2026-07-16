@@ -141,6 +141,56 @@ router.post('/:id/media', (req, res) => {
   });
 });
 
+// --- Медиа-полка: список файлов пака (used/orphan решает клиент по mediaSrc в data) ------
+router.get('/:id/media', (req, res) => {
+  db.get('SELECT id FROM packs WHERE id = ? AND owner_id = ?', [req.params.id, req.user.platformId], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    if (!row) return res.status(404).json({ error: 'Pack not found' });
+    const dir = packDir(req.params.id);
+    let files = [];
+    if (fs.existsSync(dir)) {
+      files = fs.readdirSync(dir).map(name => {
+        const st = fs.statSync(path.join(dir, name));
+        return { name, url: `/packs-media/${req.params.id}/${name}`, sizeBytes: st.size, mtimeMs: st.mtimeMs };
+      });
+    }
+    res.json({ files });
+  });
+});
+
+// Удалить один файл медиа (GC осиротевших) — path.basename защищает от path traversal
+router.delete('/:id/media/:filename', (req, res) => {
+  db.get('SELECT id FROM packs WHERE id = ? AND owner_id = ?', [req.params.id, req.user.platformId], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    if (!row) return res.status(404).json({ error: 'Pack not found' });
+    const safe = path.basename(req.params.filename);
+    try { fs.unlinkSync(path.join(packDir(req.params.id), safe)); } catch { /* уже нет — ок */ }
+    res.json({ ok: true });
+  });
+});
+
+// --- Ремикс: глубокая копия пака (данные + физические файлы медиа) в новый независимый пак ---
+router.post('/:id/duplicate', (req, res) => {
+  db.get('SELECT * FROM packs WHERE id = ? AND owner_id = ?', [req.params.id, req.user.platformId], (err, row) => {
+    if (err) return res.status(500).json({ error: 'DB error' });
+    if (!row) return res.status(404).json({ error: 'Pack not found' });
+    const newId = genId();
+    const now = Date.now();
+    const name = `${row.name} (копия)`.slice(0, 120);
+    // toPortable/fromPortable уже умеют переписывать ВСЕ медиа-ссылки (вкл. items[] тир-листа) —
+    // переиспользуем их вместо ручного обхода дерева
+    const data = fromPortable(toPortable(JSON.parse(row.data), row.id), newId);
+    const srcDir = packDir(row.id), dstDir = packDir(newId);
+    if (fs.existsSync(srcDir)) { fs.mkdirSync(dstDir, { recursive: true }); fs.cpSync(srcDir, dstDir, { recursive: true }); }
+    db.run('INSERT INTO packs (id, owner_id, name, data, created_at, touched_at) VALUES (?, ?, ?, ?, ?, ?)',
+      [newId, req.user.platformId, name, JSON.stringify(data), now, now],
+      (e2) => {
+        if (e2) { rmPackDir(newId); return res.status(500).json({ error: 'DB error' }); }
+        res.status(201).json({ id: newId, name });
+      });
+  });
+});
+
 // --- Экспорт: ZIP (pack.json + media/) -----------------------------------
 router.get('/:id/export', (req, res) => {
   db.get('SELECT * FROM packs WHERE id = ? AND owner_id = ?', [req.params.id, req.user.platformId], (err, row) => {

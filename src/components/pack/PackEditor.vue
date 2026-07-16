@@ -6,6 +6,9 @@
         <input v-model="local.name" class="hub-input flex-1 min-w-[200px] text-lg font-bold" placeholder="Название пака" />
         <button @click="save" :disabled="saving" class="hub-btn-primary text-sm disabled:opacity-50">{{ saving ? 'Сохраняем…' : '💾 Сохранить' }}</button>
         <span class="text-xs w-28" :class="savedStatus === 'error' ? 'text-hub-negative' : 'text-hub-muted'">{{ statusText }}</span>
+        <button @click="undo" :disabled="!canUndo" class="hub-btn text-sm disabled:opacity-30" title="Отменить (Ctrl+Z)">↶</button>
+        <button @click="redo" :disabled="!canRedo" class="hub-btn text-sm disabled:opacity-30" title="Повторить (Ctrl+Shift+Z)">↷</button>
+        <button @click="openShelf()" class="hub-btn text-sm">🗂 Медиа</button>
         <button @click="showLint = true" class="hub-btn text-sm"
                 :class="lintIssues.some(i => i.level === 'error') ? '!text-hub-negative' : lintIssues.length ? '!text-hub-warning' : ''">
           🔍 Проверка{{ lintIssues.length ? ` (${lintIssues.length})` : '' }}
@@ -140,6 +143,10 @@
 
     <TemplateWizard v-if="showWizard" :suggested-theme="local.name" @close="showWizard = false" @apply="applyWizard" />
     <LintPanel v-if="showLint" :issues="lintIssues" @close="showLint = false" @jump="jumpToIssue" />
+    <TypePalette v-if="showTypePalette" :type-meta="TYPE_META" :current-type="editQ.type"
+                 @close="showTypePalette = false" @select="onTypeSelect" />
+    <MediaShelf v-if="showShelf" :pack-id="props.packId" :used-names="usedMediaNames" :target="shelfTarget"
+                @close="closeShelf" @pick="flash('Медиа подключено из полки')" />
 
     <!-- Редактор одного вопроса -->
     <div v-if="editing" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="closeEditing">
@@ -155,7 +162,10 @@
         <div class="flex flex-col gap-3">
           <div class="flex gap-2">
             <label class="flex-1">
-              <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Тип</span>
+              <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black flex items-center justify-between">
+                Тип
+                <button type="button" @click="showTypePalette = true" class="text-hub-accent normal-case tracking-normal font-bold hover:underline" title="Быстрый выбор (Ctrl+K)">⌘K</button>
+              </span>
               <select v-model="editQ.type" @change="ensureTypeFields(editQ)" class="hub-input text-sm w-full mt-1">
                 <option v-for="t in TYPES" :key="t" :value="t">{{ TYPE_META[t].l }}</option>
               </select>
@@ -178,6 +188,7 @@
                 {{ editQ.mediaSrc ? '🔁 Заменить' : '📎 Загрузить' }} {{ editQ.type === 'karaoke' ? 'реф-аудио' : editQ.type === 'snippet' ? 'фрагмент' : 'медиа' }}
                 <input type="file" class="hidden" accept="image/*,audio/*,video/*" @change="onMedia($event, editQ)" />
               </label>
+              <button @click="openShelf(editQ)" class="hub-btn text-xs" title="Выбрать уже загруженный файл пака">🗂 Из полки</button>
               <button v-if="editQ.mediaSrc" @click="removeMedia(editQ)" class="hub-btn text-xs !text-hub-negative">✕ убрать</button>
             </div>
             <!-- Живое превью того, что загрузили -->
@@ -240,7 +251,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, computed, onMounted, watch, onBeforeUnmount } from 'vue'
+import { reactive, ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
 import { usePacksStore } from '../../stores/packs'
 import { useGameStore } from '../../stores/game'
 import { getPlatform } from '../../platform/sdk'
@@ -249,6 +260,8 @@ import TemplateWizard from './TemplateWizard.vue'
 import { stubForType } from './templates'
 import LintPanel from './LintPanel.vue'
 import { isBlank, lintPack, renumberCategory } from './lint'
+import TypePalette from './TypePalette.vue'
+import MediaShelf from './MediaShelf.vue'
 
 const props = defineProps({ packId: { type: String, required: true } })
 const emit = defineEmits(['close', 'saved'])
@@ -297,6 +310,9 @@ const mapView = ref(false)
 const dragRound = ref(null) // индекс перетаскиваемого раунда
 const dragCat = ref(null)   // индекс перетаскиваемой категории (в текущем round)
 const dragCell = ref(null)  // { cat, index } перетаскиваемой ячейки
+const showTypePalette = ref(false)
+const showShelf = ref(false)
+const shelfTarget = ref(null) // вопрос/объект, куда «Из полки» подставит mediaSrc; null = режим просмотра/GC
 
 const round = computed(() => local.data.rounds[activeRound.value] || null)
 const editQ = computed(() => editing.value ? editing.value.cat.questions[editing.value.qi] : {})
@@ -370,9 +386,47 @@ const completeness = computed(() => local.data.rounds.map(r => {
   return { done, total }
 }))
 
+// Имена файлов (basename), реально используемых где-либо в паке — для медиа-полки (used/orphan)
+const usedMediaNames = computed(() => {
+  const names = []
+  local.data.rounds.forEach(r => (r.categories || []).forEach(c => (c.questions || []).forEach(q => {
+    if (q.mediaSrc) names.push(q.mediaSrc.split('/').pop())
+    ;(q.items || []).forEach(it => { if (it.mediaSrc) names.push(it.mediaSrc.split('/').pop()) })
+  })))
+  return names
+})
+
 const loaded = ref(false)
 const savedStatus = ref('') // '' | 'dirty' | 'saving' | 'saved' | 'error'
 let saveTimer = null
+
+// --- Undo/Redo: снапшоты local.data на том же debounce-цикле, что и autosave ---
+const historyStack = ref([]) // JSON-строки снапшотов
+const historyIndex = ref(-1)
+let applyingHistory = false
+const canUndo = computed(() => historyIndex.value > 0)
+const canRedo = computed(() => historyIndex.value < historyStack.value.length - 1)
+
+function snapshotNow() {
+  const snap = JSON.stringify(local.data)
+  if (historyStack.value[historyIndex.value] === snap) return
+  historyStack.value = historyStack.value.slice(0, historyIndex.value + 1) // отбросить redo-хвост
+  historyStack.value.push(snap)
+  if (historyStack.value.length > 50) historyStack.value.shift()
+  historyIndex.value = historyStack.value.length - 1
+}
+function applySnapshot(idx) {
+  applyingHistory = true
+  historyIndex.value = idx
+  local.data = JSON.parse(historyStack.value[idx])
+  // editing.value.cat — ссылка на СТАРОЕ дерево, после замены local.data она протухла бы
+  editing.value = null
+  testing.value = false
+  activeRound.value = Math.min(activeRound.value, Math.max(0, local.data.rounds.length - 1))
+  nextTick(() => { applyingHistory = false })
+}
+function undo() { if (canUndo.value) applySnapshot(historyIndex.value - 1) }
+function redo() { if (canRedo.value) applySnapshot(historyIndex.value + 1) }
 
 onMounted(async () => {
   try {
@@ -380,16 +434,37 @@ onMounted(async () => {
     local.name = pack.name
     local.data = pack.data && Array.isArray(pack.data.rounds) ? pack.data : { rounds: [] }
   } catch (e) { flash(e.message, true) }
-  finally { loaded.value = true }
+  finally {
+    loaded.value = true
+    historyStack.value = [JSON.stringify(local.data)]
+    historyIndex.value = 0
+  }
 })
 
 // Автосохранение: debounced тихий PUT (бампает touched_at → пак не протухает по TTL)
 watch(() => [local.name, local.data], () => {
-  if (!loaded.value) return
+  if (!loaded.value || applyingHistory) return
   savedStatus.value = 'dirty'
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(autosave, 1500)
+  saveTimer = setTimeout(() => { snapshotNow(); autosave() }, 1500)
 }, { deep: true })
+
+// Ctrl+K — палитра типа (только пока открыта модалка вопроса); Ctrl+Z/Ctrl+Shift+Z — undo/redo,
+// но НЕ когда фокус в поле ввода (иначе сломаем нативный undo текста в этом поле)
+function isTypingTarget(e) {
+  const t = e.target
+  return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+}
+function onGlobalKeydown(e) {
+  if (!(e.ctrlKey || e.metaKey)) return
+  const key = e.key.toLowerCase()
+  if (key === 'k' && editing.value) { e.preventDefault(); showTypePalette.value = true; return }
+  if (isTypingTarget(e)) return
+  if (key === 'z' && !e.shiftKey) { e.preventDefault(); undo() }
+  else if ((key === 'z' && e.shiftKey) || key === 'y') { e.preventDefault(); redo() }
+}
+onMounted(() => window.addEventListener('keydown', onGlobalKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKeydown))
 
 async function autosave() {
   savedStatus.value = 'saving'
@@ -478,6 +553,14 @@ function jumpToCell(ri, ci, qi) {
   const cat = local.data.rounds[ri]?.categories?.[ci]
   if (cat) openQuestion(cat, qi)
 }
+
+// Command-palette типа: смена недеструктивна — q/a/points сохраняются, ensureTypeFields
+// лениво добавляет недостающие поля нового типа, ничего не удаляет
+function onTypeSelect(key) { editQ.value.type = key; ensureTypeFields(editQ.value) }
+
+// Медиа-полка: target=null → просмотр/GC; target=вопрос/объект → «Использовать здесь» подставит файл
+function openShelf(target = null) { shelfTarget.value = target; showShelf.value = true }
+function closeShelf() { showShelf.value = false; shelfTarget.value = null }
 function deleteQuestion() {
   editing.value.cat.questions.splice(editing.value.qi, 1)
   editing.value = null

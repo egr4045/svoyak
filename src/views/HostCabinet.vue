@@ -55,6 +55,7 @@
             <span class="font-bold flex-1 min-w-[140px]">{{ p.name }}</span>
             <span class="text-[11px] text-hub-muted">хранится до {{ formatExpiry(p.expiresAt) }}</span>
             <button @click="editPack(p.id)" class="hub-btn text-xs">✏ Изменить</button>
+            <button @click="remixPack(p)" class="hub-btn text-xs" title="Дублировать пак целиком, с медиа">⧉ Ремикс</button>
             <button @click="packs.exportPack(p.id, p.name)" class="hub-btn text-xs">⬇ ZIP</button>
             <button @click="removePack(p)" class="hub-btn text-xs !text-hub-negative">{{ pendingDelete === p.id ? 'Точно?' : '🗑' }}</button>
           </div>
@@ -121,6 +122,13 @@ async function newPack() {
 }
 
 function editPack(id) { editingId.value = id }
+
+async function remixPack(p) {
+  try {
+    const copy = await packs.duplicatePack(p.id)
+    platform.toast(`Создана копия «${copy.name}»`)
+  } catch (e) { error.value = e.message }
+}
 
 // Двухкликовое подтверждение вместо нативного confirm
 const pendingDelete = ref(null)

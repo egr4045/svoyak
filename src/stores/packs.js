@@ -84,6 +84,29 @@ export const usePacksStore = defineStore('packs', {
       URL.revokeObjectURL(url)
     },
 
+    // Список файлов медиа пака (для полки: используются/осиротели)
+    async listMedia(packId) {
+      const res = await fetch(`${this._base()}/${packId}/media`, { headers: this._headers(false) })
+      if (!res.ok) throw new Error('Не удалось получить список медиа')
+      return res.json() // { files: [{name, url, sizeBytes, mtimeMs}] }
+    },
+
+    async deleteMedia(packId, filename) {
+      const res = await fetch(`${this._base()}/${packId}/media/${encodeURIComponent(filename)}`, {
+        method: 'DELETE', headers: this._headers(false)
+      })
+      if (!res.ok) throw new Error('Не удалось удалить файл')
+    },
+
+    // Дублировать пак целиком (данные + физические файлы медиа) → новый независимый пак
+    async duplicatePack(id) {
+      const res = await fetch(`${this._base()}/${id}/duplicate`, { method: 'POST', headers: this._headers(false) })
+      if (!res.ok) throw new Error('Не удалось создать копию')
+      const pack = await res.json()
+      await this.fetchPacks()
+      return pack
+    },
+
     // Импорт ZIP (File) → новый пак
     async importPack(file) {
       const zipBase64 = await new Promise((resolve, reject) => {
