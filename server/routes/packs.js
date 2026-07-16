@@ -77,6 +77,22 @@ router.get('/', (req, res) => {
   });
 });
 
+// Чужие паки, которые я уже ПРОШЁЛ вживую (игроком/зрителем в игре, дошедшей до конца).
+// ВАЖНО: маршрут должен стоять ДО '/:id', иначе Express примет 'played' за id пака.
+router.get('/played', (req, res) => {
+  db.all(
+    `SELECT p.id, p.name, p.created_at, pl.played_at
+     FROM pack_plays pl JOIN packs p ON p.id = pl.pack_id
+     WHERE pl.platform_id = ? AND p.owner_id != ?
+     ORDER BY pl.played_at DESC`,
+    [req.user.platformId, req.user.platformId],
+    (err, rows) => {
+      if (err) return res.status(500).json({ error: 'DB error' });
+      res.json({ packs: (rows || []).map(r => ({ id: r.id, name: r.name, playedAt: r.played_at })) });
+    }
+  );
+});
+
 // Полный пак
 router.get('/:id', (req, res) => {
   db.get('SELECT * FROM packs WHERE id = ? AND owner_id = ?', [req.params.id, req.user.platformId], (err, row) => {
@@ -241,12 +257,21 @@ router.post('/import', (req, res) => {
 });
 
 // Загрузка пака для инъекции в комнату (используется в /api/rooms). Возвращает {rounds} или null.
-function loadPackForRoom(packId, ownerPlatformId) {
+// Разрешено владельцу ИЛИ тому, кто уже прошёл этот пак вживую (pack_plays) — «прошедший» может
+// хостить пак сам, но НЕ получает прав редактировать/удалять/экспортировать/ремиксить оригинал
+// (те эндпоинты выше остаются строго owner_id = ?).
+function loadPackForRoom(packId, requesterPlatformId) {
   return new Promise((resolve) => {
-    db.get('SELECT data FROM packs WHERE id = ? AND owner_id = ?', [packId, ownerPlatformId], (err, row) => {
-      if (err || !row) return resolve(null);
-      try { resolve(JSON.parse(row.data)); } catch { resolve(null); }
-    });
+    db.get(
+      `SELECT data FROM packs WHERE id = ? AND (owner_id = ? OR id IN (
+         SELECT pack_id FROM pack_plays WHERE platform_id = ?
+       ))`,
+      [packId, requesterPlatformId, requesterPlatformId],
+      (err, row) => {
+        if (err || !row) return resolve(null);
+        try { resolve(JSON.parse(row.data)); } catch { resolve(null); }
+      }
+    );
   });
 }
 

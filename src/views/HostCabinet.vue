@@ -19,7 +19,12 @@
             <span class="text-xs uppercase tracking-widest text-hub-muted font-black">Пак вопросов</span>
             <select v-model="selectedPack" class="hub-input font-bold min-w-[220px]">
               <option value="">Встроенный пак</option>
-              <option v-for="p in packs.packs" :key="p.id" :value="p.id">{{ p.name }}</option>
+              <optgroup v-if="packs.packs.length" label="Мои паки">
+                <option v-for="p in packs.packs" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </optgroup>
+              <optgroup v-if="packs.playedPacks.length" label="Пройденные паки">
+                <option v-for="p in packs.playedPacks" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </optgroup>
             </select>
           </label>
           <label class="flex flex-col gap-2">
@@ -61,6 +66,20 @@
           </div>
         </div>
       </section>
+
+      <!-- Пройденные паки: чужие паки, в которых я уже участвовал (игроком/наблюдателем) до конца.
+           Содержание уже знакомо — спойлеров нет. Можно хостить, редактировать/удалять/экспортировать нельзя. -->
+      <section v-if="packs.playedPacks.length" class="panel-glass p-8 mt-8">
+        <h2 class="text-xl font-bold mb-2">Пройденные паки</h2>
+        <p class="text-hub-muted text-xs mb-6">Паки друзей, где вы уже были игроком или наблюдателем до конца игры. Можете хостить сами.</p>
+        <div class="space-y-2">
+          <div v-for="p in packs.playedPacks" :key="p.id" class="hub-card px-4 py-3 flex items-center gap-3 flex-wrap">
+            <span class="font-bold flex-1 min-w-[140px]">{{ p.name }}</span>
+            <span class="text-[11px] text-hub-muted">пройден {{ formatExpiry(p.playedAt) }}</span>
+            <button @click="hostWithPlayed(p.id)" class="hub-btn-primary text-xs">🎮 Создать игру</button>
+          </div>
+        </div>
+      </section>
     </div>
 
     <PackEditor v-if="editingId" :pack-id="editingId" @close="editingId = null" @saved="packs.fetchPacks()" />
@@ -88,7 +107,7 @@ const editingId = ref(null)
 
 const shortId = computed(() => platform.me?.accountId ? platform.me.accountId.slice(0, 8) : '')
 
-onMounted(() => packs.fetchPacks())
+onMounted(() => { packs.fetchPacks(); packs.fetchPlayedPacks() })
 
 function copyId() {
   if (platform.me?.accountId) {
@@ -128,6 +147,12 @@ async function remixPack(p) {
     const copy = await packs.duplicatePack(p.id)
     platform.toast(`Создана копия «${copy.name}»`)
   } catch (e) { error.value = e.message }
+}
+
+// Один клик: выбрать пройденный пак и сразу создать с ним игру
+function hostWithPlayed(id) {
+  selectedPack.value = id
+  createGame()
 }
 
 // Двухкликовое подтверждение вместо нативного confirm

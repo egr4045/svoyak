@@ -43,7 +43,7 @@ app.post('/api/rooms', authenticateToken, async (req, res) => {
     pack = await loadPackForRoom(req.body.packId, req.user.platformId);
     if (!pack) return res.status(404).json({ error: 'Pack not found' });
   }
-  const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers, pack });
+  const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers, pack, packId: req.body?.packId || null });
   res.status(201).json({ roomCode: code });
 });
 

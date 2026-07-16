@@ -7,6 +7,7 @@ import { useGameStore } from './game'
 export const usePacksStore = defineStore('packs', {
   state: () => ({
     packs: [],       // мета: { id, name, createdAt, expiresAt }
+    playedPacks: [], // чужие паки, которые я прошёл вживую: { id, name, playedAt }
     loading: false
   }),
 
@@ -26,6 +27,12 @@ export const usePacksStore = defineStore('packs', {
         const res = await fetch(this._base(), { headers: this._headers(false) })
         if (res.ok) this.packs = (await res.json()).packs || []
       } finally { this.loading = false }
+    },
+
+    // Чужие паки, которые я прошёл вживую (игроком/наблюдателем) — можно хостить, нельзя редактировать
+    async fetchPlayedPacks() {
+      const res = await fetch(`${this._base()}/played`, { headers: this._headers(false) })
+      if (res.ok) this.playedPacks = (await res.json()).packs || []
     },
 
     async getPack(id) {

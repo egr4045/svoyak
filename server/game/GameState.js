@@ -1,3 +1,4 @@
+const db = require('../db/database');
 const initialGameData = require('./initialData');
 const StandardHandler = require('./questions/StandardHandler');
 const PokerHandler = require('./questions/PokerHandler');
@@ -76,6 +77,8 @@ class GameState {
     this.roomCode = roomCode;
     // Кастомный пак из кабинета ведущего (или встроенный дефолт)
     this.pack = extractRounds(options.pack);
+    // id пака в БД (null для встроенного) — нужен только для записи «прошёл пак» при game_over
+    this.packId = options.packId || null;
     this.state = this.getInitialState(hostUser, options);
     this.timers = {};
     // Приватный показ и запечатанные сабмиты живут ВНЕ broadcast-стейта (иначе секрет
@@ -283,7 +286,28 @@ class GameState {
     } else {
       this.state.questionStatus = 'game_over';
       this.addLog('Игра окончена!', 'system');
+      this.recordPlays();
     }
+  }
+
+  // Отмечает всех участников (игроков+наблюдателей, кроме самого ведущего) как «прошедших» этот
+  // пак — даёт им право самим хостить этот же пак (без прав редактировать/удалять/экспортировать
+  // оригинал). Ничего не делает для встроенного пака (packId не задан).
+  recordPlays() {
+    if (!this.packId) return;
+    const hostPid = this.state.host.platformId;
+    const pids = new Set();
+    [...this.state.players, ...this.state.spectators].forEach(p => {
+      if (p.platformId && p.platformId !== hostPid) pids.add(p.platformId);
+    });
+    const now = Date.now();
+    pids.forEach(pid => {
+      db.run(
+        `INSERT INTO pack_plays (pack_id, platform_id, played_at) VALUES (?, ?, ?)
+         ON CONFLICT(pack_id, platform_id) DO UPDATE SET played_at = excluded.played_at`,
+        [this.packId, pid, now]
+      );
+    });
   }
 
   getCurrentQuestion() {

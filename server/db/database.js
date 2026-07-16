@@ -55,6 +55,16 @@ const db = new sqlite3.Database(dbPath, (err) => {
       db.run(`CREATE INDEX IF NOT EXISTS idx_packs_owner ON packs(owner_id)`);
       // touched_at: TTL считаем от последнего изменения, а не от создания (активный пак не протухает)
       db.run(`ALTER TABLE packs ADD COLUMN touched_at INTEGER`, () => { /* колонка уже есть — ок */ });
+
+      // Кто прошёл чужой пак вживую (игроком/зрителем в игре, дошедшей до конца) — даёт право
+      // хостить этот пак самому, не открывая доступ к редактированию/удалению/экспорту оригинала.
+      db.run(`CREATE TABLE IF NOT EXISTS pack_plays (
+        pack_id TEXT NOT NULL,
+        platform_id TEXT NOT NULL,
+        played_at INTEGER NOT NULL,
+        PRIMARY KEY (pack_id, platform_id)
+      )`);
+      db.run(`CREATE INDEX IF NOT EXISTS idx_pack_plays_platform ON pack_plays(platform_id)`);
     });
   }
 });
