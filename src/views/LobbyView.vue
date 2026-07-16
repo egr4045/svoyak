@@ -188,6 +188,8 @@ onMounted(() => {
       if (round.categories) round.categories.forEach(cat => {
         cat.questions.forEach(q => {
           [q.mediaSrc, q.answerMediaSrc, q.image, q.media, q.answerMedia].forEach(s => { if (s) mediaUrls.push(store.getAssetUrl(s)) })
+          // Тир-лист: медиа лежит на каждом объекте отдельно, не в q.mediaSrc
+          if (Array.isArray(q.items)) q.items.forEach(it => { if (it?.mediaSrc) mediaUrls.push(store.getAssetUrl(it.mediaSrc)) })
         })
       })
     })

@@ -6,22 +6,31 @@
            :src="store.getAssetUrl(store.currentQuestion.image || store.currentQuestion.mediaSrc)" 
            class="w-full h-auto object-contain max-h-[40vh] transition-transform duration-500 group-hover:scale-[1.02]" />
       
-      <div v-else-if="store.currentQuestion.mediaType === 'video'" class="w-full aspect-video flex flex-col items-center justify-center bg-slate-950">
-        <video v-if="store.mediaState?.status === 'playing'" ref="videoPlayer" :src="store.getAssetUrl(store.currentQuestion.mediaSrc)" class="w-full h-full" autoplay></video>
+      <div v-else-if="store.currentQuestion.mediaType === 'video'" class="w-full aspect-video flex flex-col items-center justify-center bg-slate-950 relative">
+        <video v-if="store.mediaState?.status === 'playing'" ref="videoPlayer" :src="store.getAssetUrl(store.currentQuestion.mediaSrc)" class="w-full h-full" playsinline></video>
         <div v-else class="flex flex-col items-center gap-4 text-slate-600">
            <Video class="w-16 h-16 opacity-30" />
            <span class="text-sm font-black uppercase tracking-[0.2em]">Видеоматериал</span>
         </div>
+        <!-- Браузер заблокировал автоплей (нет пользовательского жеста на этой странице) — клик снимает блокировку -->
+        <button v-if="videoBlocked" @click="retryVideo" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
+          <span class="text-5xl">▶</span>
+          <span class="text-xs font-bold uppercase tracking-widest">Нажмите, чтобы воспроизвести</span>
+        </button>
       </div>
 
-      <div v-else-if="store.currentQuestion.mediaType === 'audio'" class="w-full py-10 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-950">
-        <audio v-if="store.mediaState?.status === 'playing'" ref="audioPlayer" :src="store.getAssetUrl(store.currentQuestion.mediaSrc)" autoplay></audio>
+      <div v-else-if="store.currentQuestion.mediaType === 'audio'" class="w-full py-10 flex flex-col items-center justify-center bg-gradient-to-b from-slate-900 to-slate-950 relative">
+        <audio v-if="store.mediaState?.status === 'playing'" ref="audioPlayer" :src="store.getAssetUrl(store.currentQuestion.mediaSrc)"></audio>
         <div class="flex flex-col items-center gap-4">
            <div class="w-20 h-20 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20" :class="{'animate-pulse shadow-[0_0_30px_rgba(59,130,246,0.3)]': store.mediaState?.status === 'playing'}">
               <Volume2 class="w-10 h-10 text-blue-500" />
            </div>
            <span class="text-xs font-black uppercase tracking-[0.2em] text-slate-500">Аудиофрагмент</span>
         </div>
+        <button v-if="audioBlocked" @click="retryAudio" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
+          <span class="text-5xl">▶</span>
+          <span class="text-xs font-bold uppercase tracking-widest">Нажмите, чтобы включить звук</span>
+        </button>
       </div>
     </div>
 
@@ -37,7 +46,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, nextTick } from 'vue'
 import { useGameStore } from '../../stores/game'
 import { Video, Volume2 } from 'lucide-vue-next'
 
@@ -45,4 +54,31 @@ const store = useGameStore()
 const isHost = computed(() => store.host?.id === store.user?.id)
 const videoPlayer = ref(null)
 const audioPlayer = ref(null)
+const videoBlocked = ref(false)
+const audioBlocked = ref(false)
+
+// Статус media приходит по сокету (не с клика на этой странице) — браузер может заблокировать автоплей.
+// Пытаемся играть сами; если промис отклонён — показываем кнопку-фолбэк "нажмите, чтобы..." (реальный клик всегда проходит).
+async function tryPlay(kind) {
+  await nextTick()
+  const el = kind === 'video' ? videoPlayer.value : audioPlayer.value
+  if (!el) return
+  const blocked = kind === 'video' ? videoBlocked : audioBlocked
+  blocked.value = false
+  try {
+    await el.play()
+  } catch {
+    blocked.value = true
+  }
+}
+
+watch(() => store.mediaState?.status, (status) => {
+  if (status !== 'playing') { videoBlocked.value = false; audioBlocked.value = false; return }
+  const type = store.currentQuestion?.mediaType
+  if (type === 'video') tryPlay('video')
+  else if (type === 'audio') tryPlay('audio')
+}, { immediate: true })
+
+function retryVideo() { tryPlay('video') }
+function retryAudio() { tryPlay('audio') }
 </script>
