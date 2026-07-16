@@ -6,6 +6,13 @@
         <input v-model="local.name" class="hub-input flex-1 min-w-[200px] text-lg font-bold" placeholder="Название пака" />
         <button @click="save" :disabled="saving" class="hub-btn-primary text-sm disabled:opacity-50">{{ saving ? 'Сохраняем…' : '💾 Сохранить' }}</button>
         <span class="text-xs w-28" :class="savedStatus === 'error' ? 'text-hub-negative' : 'text-hub-muted'">{{ statusText }}</span>
+        <button @click="showLint = true" class="hub-btn text-sm"
+                :class="lintIssues.some(i => i.level === 'error') ? '!text-hub-negative' : lintIssues.length ? '!text-hub-warning' : ''">
+          🔍 Проверка{{ lintIssues.length ? ` (${lintIssues.length})` : '' }}
+        </button>
+        <button @click="mapView = !mapView" class="hub-btn text-sm" :class="mapView ? '!text-hub-accent' : ''">
+          {{ mapView ? '📋 По раундам' : '🗺 Карта пака' }}
+        </button>
         <button @click="showWizard = true" class="hub-btn text-sm">🎨 Шаблон</button>
         <button @click="exportPack" class="hub-btn text-sm">⬇ ZIP</button>
         <button @click="$emit('close')" class="hub-btn text-sm">✕ Закрыть</button>
@@ -21,19 +28,50 @@
       </div>
 
       <!-- Вкладки раундов -->
-      <div class="flex items-center gap-1 border-b border-hub-border mb-5 flex-wrap">
-        <button v-for="(round, ri) in local.data.rounds" :key="ri"
+      <div v-if="!mapView" class="flex items-center gap-1 border-b border-hub-border mb-5 flex-wrap">
+        <button v-for="(rnd, ri) in local.data.rounds" :key="ri"
                 @click="activeRound = ri"
                 @contextmenu="roundMenu(ri, $event)"
-                class="px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors"
+                draggable="true"
+                @dragstart="dragRound = ri"
+                @dragover.prevent
+                @drop="onRoundDrop(ri)"
+                class="px-4 py-2 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-1.5"
                 :class="activeRound === ri ? 'border-hub-accent text-hub-accent' : 'border-transparent text-hub-muted hover:text-hub-text'">
-          {{ round.name || `Раунд ${ri + 1}` }}
+          {{ rnd.name || `Раунд ${ri + 1}` }}
+          <span v-if="completeness[ri]?.total" class="text-[9px] font-black"
+                :class="completeness[ri].done === completeness[ri].total ? 'text-hub-positive' : 'text-hub-warning'">
+            {{ completeness[ri].done }}/{{ completeness[ri].total }}
+          </span>
         </button>
         <button @click="addRound" class="px-3 py-2 text-sm font-bold text-hub-muted hover:text-hub-accent">+ Раунд</button>
       </div>
 
+      <!-- Карта пака: компактный обзор всех раундов, клик по ячейке телепортирует к вопросу -->
+      <template v-if="mapView">
+        <div class="flex flex-col gap-4 mb-4">
+          <div v-for="(r, ri) in local.data.rounds" :key="ri" class="border border-hub-border rounded-xl p-3">
+            <p class="font-bold text-sm mb-2 text-hub-accent">{{ r.name || `Раунд ${ri + 1}` }}</p>
+            <div class="space-y-1.5">
+              <div v-for="(cat, ci) in r.categories" :key="ci" class="flex items-center gap-2">
+                <span class="w-32 shrink-0 text-[11px] text-hub-muted truncate" :title="cat.category">{{ cat.category || '—' }}</span>
+                <div class="flex gap-1 flex-wrap">
+                  <button v-for="(q, qi) in cat.questions" :key="qi" @click="jumpToCell(ri, ci, qi)"
+                          class="w-12 h-8 rounded border text-[10px] font-bold flex items-center justify-center hover:border-hub-accent transition-colors"
+                          :class="isBlank(q) ? 'border-dashed border-hub-warning/50 text-hub-warning' : 'border-hub-border text-hub-text'">
+                    {{ q.points }}
+                  </button>
+                </div>
+              </div>
+              <p v-if="!r.categories?.length" class="text-hub-muted text-xs italic">пусто</p>
+            </div>
+          </div>
+          <p v-if="!local.data.rounds.length" class="text-hub-muted text-sm text-center py-6">Пак пуст.</p>
+        </div>
+      </template>
+
       <!-- Активный раунд как игровая сетка -->
-      <template v-if="round">
+      <template v-if="!mapView && round">
         <div class="flex items-center gap-2 mb-4">
           <input v-model="round.name" class="hub-input flex-1 font-bold" placeholder="Название раунда" />
           <button @click="duplicateRound(activeRound)" class="hub-btn text-xs">⧉ Дублировать</button>
@@ -45,10 +83,15 @@
           <div v-for="(cat, ci) in round.categories" :key="ci" class="flex items-stretch gap-2">
             <!-- Заголовок категории (как в игре: акцентная левая грань) -->
             <div class="w-44 shrink-0 bg-gradient-to-r from-hub-deep to-hub-solid border-l-4 border-hub-accent rounded-r-lg p-2 flex flex-col justify-between"
+                 draggable="true"
+                 @dragstart="dragCat = ci"
+                 @dragover.prevent
+                 @drop="onCatDrop(ci)"
                  @contextmenu="catMenu(round, ci, $event)">
               <input v-model="cat.category" class="bg-transparent outline-none text-sm font-black text-hub-text w-full" placeholder="Категория" />
-              <div class="flex gap-2 mt-1">
+              <div class="flex gap-2 mt-1 flex-wrap">
                 <button @click="duplicateCategory(round, ci)" class="text-[10px] text-hub-muted hover:text-hub-accent" title="Дублировать строку">⧉ копия</button>
+                <button @click="renumberCategory(cat)" class="text-[10px] text-hub-muted hover:text-hub-accent" title="Перенумеровать очки по порядку">🔢 порядок</button>
                 <button @click="removeCategory(round, ci)" class="text-[10px] text-hub-negative hover:brightness-125">✕ строку</button>
               </div>
             </div>
@@ -58,6 +101,10 @@
               <button v-for="(q, qi) in cat.questions" :key="qi"
                       @click="openQuestion(cat, qi)"
                       @contextmenu="cellMenu(cat, qi, $event)"
+                      draggable="true"
+                      @dragstart="onCellDragStart(cat, qi)"
+                      @dragover.prevent
+                      @drop="onCellDrop(cat, qi)"
                       class="group w-24 h-[68px] rounded-lg border flex flex-col items-center justify-center transition-all hover:scale-[1.03] relative"
                       :class="isBlank(q) ? 'border-dashed border-hub-warning/50 bg-hub-warning/5' : 'border-hub-border bg-hub-deep/60 hover:border-hub-accent'">
                 <span class="text-xl font-black" :style="{ color: 'var(--c-accent)' }">{{ q.points }}</span>
@@ -80,7 +127,7 @@
         <button @click="addCategory(round)" class="hub-btn text-sm">+ Строка (категория)</button>
       </template>
 
-      <div v-else class="text-center py-10">
+      <div v-if="!mapView && !round" class="text-center py-10">
         <p class="text-hub-muted text-sm mb-4">Пак пуст — начните с пустого раунда или соберите его по теме.</p>
         <div class="flex justify-center gap-2">
           <button @click="addRound" class="hub-btn text-sm">+ Пустой раунд</button>
@@ -92,6 +139,7 @@
     </div>
 
     <TemplateWizard v-if="showWizard" :suggested-theme="local.name" @close="showWizard = false" @apply="applyWizard" />
+    <LintPanel v-if="showLint" :issues="lintIssues" @close="showLint = false" @jump="jumpToIssue" />
 
     <!-- Редактор одного вопроса -->
     <div v-if="editing" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="closeEditing">
@@ -199,6 +247,8 @@ import { getPlatform } from '../../platform/sdk'
 import QuickTestPanel from './quicktest/QuickTestPanel.vue'
 import TemplateWizard from './TemplateWizard.vue'
 import { stubForType } from './templates'
+import LintPanel from './LintPanel.vue'
+import { isBlank, lintPack, renumberCategory } from './lint'
 
 const props = defineProps({ packId: { type: String, required: true } })
 const emit = defineEmits(['close', 'saved'])
@@ -242,6 +292,11 @@ const saving = ref(false)
 const msg = ref(''); const msgErr = ref(false)
 const showWizard = ref(false)
 const bulkTheme = ref('')
+const showLint = ref(false)
+const mapView = ref(false)
+const dragRound = ref(null) // индекс перетаскиваемого раунда
+const dragCat = ref(null)   // индекс перетаскиваемой категории (в текущем round)
+const dragCell = ref(null)  // { cat, index } перетаскиваемой ячейки
 
 const round = computed(() => local.data.rounds[activeRound.value] || null)
 const editQ = computed(() => editing.value ? editing.value.cat.questions[editing.value.qi] : {})
@@ -281,26 +336,6 @@ const aPlaceholder = computed(() => {
 
 function flash(text, err = false) { msg.value = text; msgErr.value = err; setTimeout(() => (msg.value = ''), 4000) }
 
-// Каждый тип валиден по своим полям (иначе на доске висит ⚠).
-function isBlank(q) {
-  const noQ = !q.q?.trim()
-  const noA = !q.a?.trim()
-  switch (q.type) {
-    case 'reaction':
-    case 'rps':       return false                 // авто/без контента
-    case 'sketch':
-    case 'potato':
-    case 'whosaid':
-    case 'media':     return noQ                   // нужен только текст (вопрос/категория/промпт)
-    case 'charades':
-    case 'karaoke':   return noA                   // нужно слово/название; инструкция опциональна
-    case 'snippet':   return !q.mediaSrc || noA    // нужен фрагмент-медиа и ответ
-    case 'alias':     return !(q.words && q.words.some(w => w?.trim())) // ≥1 слово
-    case 'tierlist':  return !(q.items && q.items.some(it => it?.label?.trim() || it?.mediaSrc)) // ≥1 объект
-    default:          return noQ || noA            // обычные типы: вопрос + ответ
-  }
-}
-
 // Ленивая инициализация полей-массивов + умные дефолты при выборе типа
 function ensureTypeFields(q) {
   if (q.type === 'alias') { if (!Array.isArray(q.words)) q.words = ['']; if (q.timerSec == null) q.timerSec = 60 }
@@ -326,6 +361,14 @@ const packStats = computed(() => {
   return { rounds: local.data.rounds.length, questions: q, blank, types: types.size, minutes: Math.max(1, Math.round(q * 0.75)) }
 })
 const statusText = computed(() => ({ dirty: '● есть изменения', saving: 'Сохраняем…', saved: '✓ Сохранено', error: '⚠ ошибка' }[savedStatus.value] || ''))
+
+// Находки линтера + completeness (done/total) на раунд для бейджей на вкладках
+const lintIssues = computed(() => lintPack(local.data.rounds))
+const completeness = computed(() => local.data.rounds.map(r => {
+  let total = 0, done = 0
+  ;(r.categories || []).forEach(c => (c.questions || []).forEach(q => { total++; if (!isBlank(q)) done++ }))
+  return { done, total }
+}))
 
 const loaded = ref(false)
 const savedStatus = ref('') // '' | 'dirty' | 'saving' | 'saved' | 'error'
@@ -418,6 +461,23 @@ function addQuestion(cat) {
 function openQuestion(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]); testing.value = false }
 function openTest(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]); testing.value = true }
 function closeEditing() { editing.value = null; testing.value = false }
+
+// Телепорт из линтера/карты пака прямо к проблемной ячейке
+function jumpToIssue(iss) {
+  activeRound.value = iss.roundIdx
+  mapView.value = false
+  showLint.value = false
+  if (iss.qi != null && iss.catIdx != null) {
+    const cat = local.data.rounds[iss.roundIdx]?.categories?.[iss.catIdx]
+    if (cat) openQuestion(cat, iss.qi)
+  }
+}
+function jumpToCell(ri, ci, qi) {
+  activeRound.value = ri
+  mapView.value = false
+  const cat = local.data.rounds[ri]?.categories?.[ci]
+  if (cat) openQuestion(cat, qi)
+}
 function deleteQuestion() {
   editing.value.cat.questions.splice(editing.value.qi, 1)
   editing.value = null
@@ -433,6 +493,34 @@ function duplicateCategory(r, ci) { r.categories.splice(ci + 1, 0, clone(r.categ
 function duplicateRound(ri) {
   const copy = clone(local.data.rounds[ri]); copy.name = (copy.name || `Раунд ${ri + 1}`) + ' (копия)'
   local.data.rounds.splice(ri + 1, 0, copy); activeRound.value = ri + 1
+}
+
+// --- Drag-and-drop реордер (нативный HTML5 DnD, без библиотек) ---
+function onRoundDrop(targetIdx) {
+  if (dragRound.value == null || dragRound.value === targetIdx) { dragRound.value = null; return }
+  // activeRound может сместиться при splice — отслеживаем по ССЫЛКЕ на объект, не по индексу
+  const activeRef = local.data.rounds[activeRound.value]
+  const [item] = local.data.rounds.splice(dragRound.value, 1)
+  local.data.rounds.splice(targetIdx, 0, item)
+  const newIdx = local.data.rounds.indexOf(activeRef)
+  if (newIdx !== -1) activeRound.value = newIdx
+  dragRound.value = null
+}
+function onCatDrop(targetIdx) {
+  if (dragCat.value == null || dragCat.value === targetIdx || !round.value) { dragCat.value = null; return }
+  const [item] = round.value.categories.splice(dragCat.value, 1)
+  round.value.categories.splice(targetIdx, 0, item)
+  dragCat.value = null
+}
+function onCellDragStart(cat, qi) { dragCell.value = { cat, index: qi } }
+function onCellDrop(cat, targetIdx) {
+  if (!dragCell.value || dragCell.value.cat !== cat) { dragCell.value = null; return }
+  const from = dragCell.value.index
+  if (from !== targetIdx) {
+    const [item] = cat.questions.splice(from, 1)
+    cat.questions.splice(targetIdx, 0, item)
+  }
+  dragCell.value = null
 }
 
 // --- ПКМ-меню (SDK). Без window.mygame — отдаём браузеру родное меню ---
