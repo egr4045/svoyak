@@ -6,14 +6,19 @@
         <input v-model="local.name" class="hub-input flex-1 min-w-[200px] text-lg font-bold" placeholder="Название пака" />
         <button @click="save" :disabled="saving" class="hub-btn-primary text-sm disabled:opacity-50">{{ saving ? 'Сохраняем…' : '💾 Сохранить' }}</button>
         <span class="text-xs w-28" :class="savedStatus === 'error' ? 'text-hub-negative' : 'text-hub-muted'">{{ statusText }}</span>
+        <button @click="showWizard = true" class="hub-btn text-sm">🎨 Шаблон</button>
         <button @click="exportPack" class="hub-btn text-sm">⬇ ZIP</button>
         <button @click="$emit('close')" class="hub-btn text-sm">✕ Закрыть</button>
       </div>
       <p v-if="msg" class="text-sm font-bold mb-2" :class="msgErr ? 'text-hub-negative' : 'text-hub-positive'">{{ msg }}</p>
-      <p class="text-xs text-hub-muted mb-3 flex flex-wrap gap-x-3 gap-y-1">
-        <span>📦 {{ packStats.rounds }} раундов · {{ packStats.questions }} вопросов · {{ packStats.types }} типов · ~{{ packStats.minutes }} мин</span>
-        <span v-if="packStats.blank" class="text-hub-warning">⚠ {{ packStats.blank }} не заполнено</span>
-      </p>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mb-3">
+        <p class="text-xs text-hub-muted">📦 {{ packStats.rounds }} раундов · {{ packStats.questions }} вопросов · {{ packStats.types }} типов · ~{{ packStats.minutes }} мин</p>
+        <template v-if="packStats.blank">
+          <span class="text-xs text-hub-warning">⚠ {{ packStats.blank }} не заполнено</span>
+          <input v-model="bulkTheme" class="hub-input text-xs w-36 py-1" :placeholder="local.name || 'Тема для заглушек'" />
+          <button @click="fillBlanksWithStubs" class="hub-btn text-xs">✨ Заполнить образцами</button>
+        </template>
+      </div>
 
       <!-- Вкладки раундов -->
       <div class="flex items-center gap-1 border-b border-hub-border mb-5 flex-wrap">
@@ -75,10 +80,18 @@
         <button @click="addCategory(round)" class="hub-btn text-sm">+ Строка (категория)</button>
       </template>
 
-      <div v-else class="text-hub-muted text-sm py-10 text-center">Добавьте раунд, чтобы начать.</div>
+      <div v-else class="text-center py-10">
+        <p class="text-hub-muted text-sm mb-4">Пак пуст — начните с пустого раунда или соберите его по теме.</p>
+        <div class="flex justify-center gap-2">
+          <button @click="addRound" class="hub-btn text-sm">+ Пустой раунд</button>
+          <button @click="showWizard = true" class="hub-btn-primary text-sm">🎨 Собрать по теме</button>
+        </div>
+      </div>
 
       <p class="text-hub-muted text-xs mt-6">Паки хранятся 30 дней. Чтобы не потерять — выгрузите ZIP (в нём и медиа) и при необходимости загрузите обратно.</p>
     </div>
+
+    <TemplateWizard v-if="showWizard" :suggested-theme="local.name" @close="showWizard = false" @apply="applyWizard" />
 
     <!-- Редактор одного вопроса -->
     <div v-if="editing" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="closeEditing">
@@ -184,6 +197,8 @@ import { usePacksStore } from '../../stores/packs'
 import { useGameStore } from '../../stores/game'
 import { getPlatform } from '../../platform/sdk'
 import QuickTestPanel from './quicktest/QuickTestPanel.vue'
+import TemplateWizard from './TemplateWizard.vue'
+import { stubForType } from './templates'
 
 const props = defineProps({ packId: { type: String, required: true } })
 const emit = defineEmits(['close', 'saved'])
@@ -225,6 +240,8 @@ const editing = ref(null) // { cat, qi }
 const testing = ref(false) // режим быстрого теста в модалке
 const saving = ref(false)
 const msg = ref(''); const msgErr = ref(false)
+const showWizard = ref(false)
+const bulkTheme = ref('')
 
 const round = computed(() => local.data.rounds[activeRound.value] || null)
 const editQ = computed(() => editing.value ? editing.value.cat.questions[editing.value.qi] : {})
@@ -343,6 +360,48 @@ onBeforeUnmount(() => clearTimeout(saveTimer))
 function addRound() {
   local.data.rounds.push({ name: `Раунд ${local.data.rounds.length + 1}`, categories: [] })
   activeRound.value = local.data.rounds.length - 1
+}
+
+// Мастер «Пак по теме»: добавляет сгенерированные раунды и фокусирует первый из них
+function applyWizard(rounds) {
+  if (!rounds.length) return
+  const firstIdx = local.data.rounds.length
+  local.data.rounds.push(...rounds)
+  activeRound.value = firstIdx
+  showWizard.value = false
+  flash(`Добавлено раундов: ${rounds.length}`)
+}
+
+// Заполняет ТОЛЬКО пустые поля вопроса заглушкой (не трогает уже введённое автором)
+function fillMissing(target, stub) {
+  for (const [k, v] of Object.entries(stub)) {
+    if (k === 'type' || k === 'points') continue
+    if (Array.isArray(v)) {
+      const cur = target[k]
+      const curEmpty = !Array.isArray(cur) || cur.length === 0 || cur.every(x => {
+        if (typeof x === 'string') return !x.trim()
+        if (x && typeof x === 'object') return !x.label?.trim() && !x.mediaSrc
+        return !x
+      })
+      if (curEmpty) target[k] = v
+    } else if (typeof v === 'string') {
+      if (!target[k] || !String(target[k]).trim()) target[k] = v
+    } else if (target[k] == null) {
+      target[k] = v
+    }
+  }
+}
+
+function fillBlanksWithStubs() {
+  const theme = (bulkTheme.value || local.name || '').trim()
+  let count = 0
+  local.data.rounds.forEach(r => (r.categories || []).forEach(c => (c.questions || []).forEach(q => {
+    if (!isBlank(q)) return
+    fillMissing(q, stubForType(q.type, theme))
+    count++
+  })))
+  const remaining = packStats.value.blank
+  flash(count ? `Текст заполнен: ${count}${remaining ? `, но ${remaining} ещё требует медиафайл` : ''}` : 'Пустых вопросов не найдено')
 }
 function removeRound(ri) {
   local.data.rounds.splice(ri, 1)
