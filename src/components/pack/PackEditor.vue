@@ -111,7 +111,7 @@
                       class="group w-24 h-[68px] rounded-lg border flex flex-col items-center justify-center transition-all hover:scale-[1.03] relative"
                       :class="isBlank(q) ? 'border-dashed border-hub-warning/50 bg-hub-warning/5' : 'border-hub-border bg-hub-deep/60 hover:border-hub-accent'">
                 <span class="text-xl font-black" :style="{ color: 'var(--c-accent)' }">{{ q.points }}</span>
-                <span class="text-[9px] font-bold uppercase tracking-wide mt-0.5" :style="{ color: TYPE_META[q.type]?.tone }">{{ TYPE_META[q.type]?.short }}</span>
+                <span class="text-[9px] font-bold uppercase tracking-wide mt-0.5" :style="{ color: badgeFor(q).tone }">{{ badgeFor(q).label }}</span>
                 <span v-if="q.mediaSrc" class="absolute top-1 right-1 text-[9px]">📎</span>
                 <span v-if="isBlank(q)" class="absolute top-1 left-1 text-[9px]" title="Не заполнен">⚠</span>
                 <!-- Ховер-тулбар: дублировать/удалить без ПКМ-меню -->
@@ -143,7 +143,7 @@
 
     <TemplateWizard v-if="showWizard" :suggested-theme="local.name" @close="showWizard = false" @apply="applyWizard" />
     <LintPanel v-if="showLint" :issues="lintIssues" @close="showLint = false" @jump="jumpToIssue" />
-    <TypePalette v-if="showTypePalette" :type-meta="TYPE_META" :current-type="editQ.type"
+    <TypePalette v-if="showTypePalette" :type-meta="PALETTE_META" :current-type="editQ.type"
                  @close="showTypePalette = false" @select="onTypeSelect" />
     <MediaShelf v-if="showShelf" :pack-id="props.packId" :used-names="usedMediaNames" :target="shelfTarget"
                 @close="closeShelf" @pick="flash('Медиа подключено из полки')" />
@@ -176,16 +176,56 @@
             </label>
           </div>
 
-          <p class="text-[11px] text-hub-muted -mb-1">{{ TYPE_HINT[editQ.type] || '' }}</p>
+          <!-- Режим шоу -->
+          <div v-if="editQ.type === 'show'" class="flex gap-1.5 flex-wrap">
+            <button v-for="m in [['charades','🎭 Крокодил'],['karaoke','🎤 Караоке'],['alias','🗣 Алиас']]" :key="m[0]"
+                    @click="editQ.showMode = m[0]; ensureTypeFields(editQ)"
+                    class="hub-btn text-xs" :class="editQ.showMode === m[0] ? '!border-hub-accent !text-hub-accent' : ''">{{ m[1] }}</button>
+          </div>
 
-          <textarea v-if="!NO_Q_TYPES.includes(editQ.type)" v-model="editQ.q" rows="2" class="hub-input text-sm w-full" :placeholder="qPlaceholder"></textarea>
-          <input v-if="A_TYPES.includes(editQ.type)" v-model="editQ.a" class="hub-input text-sm w-full" :placeholder="aPlaceholder" />
+          <!-- Режим «все отвечают» -->
+          <div v-if="editQ.type === 'everyone'" class="flex gap-1.5 flex-wrap">
+            <button v-for="m in [['number','🔢 Число'],['tierlist','📊 Тир-лист'],['whosaid','🗣 Кто сказал']]" :key="m[0]"
+                    @click="editQ.everyoneMode = m[0]; ensureTypeFields(editQ)"
+                    class="hub-btn text-xs" :class="editQ.everyoneMode === m[0] ? '!border-hub-accent !text-hub-accent' : ''">{{ m[1] }}</button>
+          </div>
 
-          <!-- Медиа: обычное медиа, реф-аудио караоке, фрагмент -->
-          <div v-if="MEDIA_TYPES.includes(editQ.type)" class="flex flex-col gap-2">
+          <!-- Модификаторы викторины: режим ответа, ставка, галочки -->
+          <div v-if="editQ.type === 'quiz'" class="flex flex-col gap-2 border border-hub-border rounded-lg p-2.5 bg-hub-deep/30">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black w-14">Ответ</span>
+              <button @click="editQ.answerMode = 'buzzer'" class="hub-btn text-xs" :class="(editQ.answerMode || 'buzzer') === 'buzzer' ? '!border-hub-accent !text-hub-accent' : ''">🔔 Баззер</button>
+              <button @click="editQ.answerMode = 'written'; editQ.glitch = false" class="hub-btn text-xs" :class="editQ.answerMode === 'written' ? '!border-hub-accent !text-hub-accent' : ''">✍ Письменно у всех</button>
+            </div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black w-14">Ставка</span>
+              <select v-model="editQ.stake" class="hub-input text-xs py-1.5 w-44">
+                <option value="none">Обычный</option>
+                <option value="auction">💰 Аукцион (торги)</option>
+                <option value="cat">🐱 Кот в мешке (рулетка)</option>
+              </select>
+            </div>
+            <div class="flex items-center gap-4 flex-wrap">
+              <label class="flex items-center gap-1.5 text-xs cursor-pointer" :class="editQ.answerMode === 'written' ? 'opacity-40 pointer-events-none' : ''">
+                <input type="checkbox" v-model="editQ.glitch" class="accent-hub-accent" /> 👾 Глитч-текст
+              </label>
+              <label class="flex items-center gap-1.5 text-xs cursor-pointer" :title="editQ.mediaSrc ? '' : 'Нужен медиафайл'">
+                <input type="checkbox" v-model="editQ.snippet" class="accent-hub-accent" /> 🧩 Фрагмент (открытие за −очки)
+              </label>
+            </div>
+            <p v-if="editQ.snippet && !editQ.mediaSrc" class="text-[11px] text-hub-warning">⚠ Фрагменту нужен медиафайл — загрузите ниже.</p>
+          </div>
+
+          <p class="text-[11px] text-hub-muted -mb-1">{{ hintFor(editQ) }}</p>
+
+          <textarea v-if="showsQ(editQ)" v-model="editQ.q" rows="2" class="hub-input text-sm w-full" :placeholder="qPlaceholder"></textarea>
+          <input v-if="showsA(editQ)" v-model="editQ.a" class="hub-input text-sm w-full" :placeholder="aPlaceholder" />
+
+          <!-- Медиа: обычное медиа викторины, реф-аудио караоке, фрагмент -->
+          <div v-if="showsMedia(editQ)" class="flex flex-col gap-2">
             <div class="flex items-center gap-2 flex-wrap">
               <label class="hub-btn text-xs cursor-pointer">
-                {{ editQ.mediaSrc ? '🔁 Заменить' : '📎 Загрузить' }} {{ editQ.type === 'karaoke' ? 'реф-аудио' : editQ.type === 'snippet' ? 'фрагмент' : 'медиа' }}
+                {{ editQ.mediaSrc ? '🔁 Заменить' : '📎 Загрузить' }} {{ editQ.type === 'show' ? 'реф-аудио' : editQ.snippet ? 'фрагмент' : 'медиа' }}
                 <input type="file" class="hidden" accept="image/*,audio/*,video/*" @change="onMedia($event, editQ)" />
               </label>
               <button @click="openShelf(editQ)" class="hub-btn text-xs" title="Выбрать уже загруженный файл пака">🗂 Из полки</button>
@@ -200,7 +240,7 @@
           </div>
 
           <!-- Число: тип значения -->
-          <label v-if="editQ.type === 'number'" class="flex flex-col">
+          <label v-if="editQ.type === 'everyone' && editQ.everyoneMode === 'number'" class="flex flex-col">
             <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Тип значения</span>
             <select v-model="editQ.numberKind" class="hub-input text-sm mt-1 w-40">
               <option value="number">Число</option>
@@ -210,7 +250,7 @@
           </label>
 
           <!-- Алиас: список слов + таймер -->
-          <div v-if="editQ.type === 'alias'" class="flex flex-col gap-2">
+          <div v-if="editQ.type === 'show' && editQ.showMode === 'alias'" class="flex flex-col gap-2">
             <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Слова (по одному)</span>
             <div v-for="(w, wi) in editQ.words" :key="wi" class="flex gap-2">
               <input v-model="editQ.words[wi]" class="hub-input text-sm flex-1" placeholder="Слово" />
@@ -224,7 +264,7 @@
           </div>
 
           <!-- Тир-лист: список объектов (текст + опц. картинка) -->
-          <div v-if="editQ.type === 'tierlist'" class="flex flex-col gap-2">
+          <div v-if="editQ.type === 'everyone' && editQ.everyoneMode === 'tierlist'" class="flex flex-col gap-2">
             <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black">Объекты для оценки</span>
             <div v-for="(it, ii) in editQ.items" :key="ii" class="flex gap-2 items-center">
               <img v-if="it.mediaSrc" :src="mediaUrl(it.mediaSrc)" class="w-8 h-8 rounded object-cover border border-hub-border shrink-0" />
@@ -267,35 +307,95 @@ const props = defineProps({ packId: { type: String, required: true } })
 const emit = defineEmits(['close', 'saved'])
 const packs = usePacksStore()
 
-// Метаданные типов: полное имя, короткий бейдж для ячейки, цвет
+// 8 типов ядра: полное имя, короткий бейдж для ячейки, цвет.
+// Особенности (глитч/фрагмент/письменно/ставки, режимы шоу и «все отвечают») — модификаторы вопроса.
 const TYPE_META = {
-  text:       { l: 'Обычный (баззер)',          short: 'Баззер',  tone: '#9aa9bd' },
-  media:      { l: 'Медиа (фото/аудио/видео)',   short: 'Медиа',   tone: '#3da9fc' },
-  text_input: { l: 'Письменный ответ',           short: 'Текст',   tone: '#8f7cf0' },
-  glitch:     { l: 'Глитч',                       short: 'Глитч',   tone: '#b07bff' },
-  cat:        { l: 'Кот в мешке',                 short: 'Кот',     tone: '#e8a13a' },
-  among_us:   { l: 'Шпион (Amongus)',             short: 'Шпион',   tone: '#e0524a' },
-  poker:      { l: 'Покер',                       short: 'Покер',   tone: '#d96c3b' },
-  auction:    { l: 'Аукцион',                     short: 'Аукцион', tone: '#e8c24a' },
-  sketch:     { l: 'Рисование',                   short: 'Рисунок', tone: '#49a05a' },
-  // Новые типы-мини-игры
-  charades:   { l: 'Крокодил',                    short: 'Крокодил', tone: '#00cec9' },
-  karaoke:    { l: 'Караоке',                     short: 'Караоке',  tone: '#e84393' },
-  alias:      { l: 'Алиас',                       short: 'Алиас',    tone: '#6c5ce7' },
-  snippet:    { l: 'Угадай по фрагменту',         short: 'Фрагмент', tone: '#fab1a0' },
-  rps:        { l: 'Камень-ножницы',              short: 'КНБ',      tone: '#8a94a6' },
-  number:     { l: 'Угадай число',                short: 'Число',    tone: '#3da9fc' },
-  tierlist:   { l: 'Тир-лист',                    short: 'Тир-лист', tone: '#00b894' },
-  potato:     { l: 'Горячая картошка',            short: 'Картошка', tone: '#e0524a' },
-  whosaid:    { l: 'Кто это сказал',              short: 'Кто сказал', tone: '#a29bfe' },
-  reaction:   { l: 'Реакция',                     short: 'Реакция',  tone: '#fdcb6e' },
+  quiz:     { l: 'Викторина (вопрос-ответ)',        short: 'Викторина', tone: '#3da9fc' },
+  show:     { l: 'Шоу (крокодил/караоке/алиас)',    short: 'Шоу',       tone: '#e84393' },
+  everyone: { l: 'Все отвечают (число/тир/кто)',    short: 'Все',       tone: '#00b894' },
+  sketch:   { l: 'Рисование',                        short: 'Рисунок',   tone: '#49a05a' },
+  among_us: { l: 'Шпион (Amongus)',                  short: 'Шпион',     tone: '#e0524a' },
+  potato:   { l: 'Горячая картошка',                 short: 'Картошка',  tone: '#d96c3b' },
+  reaction: { l: 'Реакция',                          short: 'Реакция',   tone: '#fdcb6e' },
+  rps:      { l: 'Камень-ножницы (дуэль)',           short: 'КНБ',       tone: '#8a94a6' },
 }
 const TYPES = Object.keys(TYPE_META)
 
-// Показывать ли поля «вопрос» и «ответ» для типа (у части типов их нет)
-const NO_Q_TYPES = ['rps', 'reaction']
-const A_TYPES = ['text', 'media', 'text_input', 'glitch', 'cat', 'among_us', 'poker', 'auction', 'charades', 'karaoke', 'number', 'snippet']
-const MEDIA_TYPES = ['media', 'karaoke', 'snippet']
+// Ctrl+K-палитра: базовые типы + пресеты с модификаторами (одно нажатие — готовая комбинация)
+const PALETTE_META = {
+  quiz:              { l: 'Викторина (вопрос-ответ)' },
+  'quiz.media':      { l: 'Викторина · Медиа (фото/аудио/видео)' },
+  'quiz.written':    { l: 'Викторина · Письменный ответ' },
+  'quiz.glitch':     { l: 'Викторина · Глитч' },
+  'quiz.snippet':    { l: 'Викторина · Фрагмент (открытие за −очки)' },
+  'quiz.auction':    { l: 'Викторина · Аукцион' },
+  'quiz.cat':        { l: 'Викторина · Кот в мешке' },
+  'show.charades':   { l: 'Шоу · Крокодил' },
+  'show.karaoke':    { l: 'Шоу · Караоке' },
+  'show.alias':      { l: 'Шоу · Алиас' },
+  'everyone.number': { l: 'Все отвечают · Угадай число' },
+  'everyone.tierlist': { l: 'Все отвечают · Тир-лист' },
+  'everyone.whosaid':  { l: 'Все отвечают · Кто это сказал' },
+  sketch:            { l: 'Рисование' },
+  among_us:          { l: 'Шпион (Amongus)' },
+  potato:            { l: 'Горячая картошка' },
+  reaction:          { l: 'Реакция' },
+  rps:               { l: 'Камень-ножницы (дуэль)' },
+}
+// Пресет палитры → патч полей вопроса
+const PALETTE_APPLY = {
+  quiz:              { type: 'quiz' },
+  'quiz.media':      { type: 'quiz' }, // медиа = просто прикрепить файл
+  'quiz.written':    { type: 'quiz', answerMode: 'written' },
+  'quiz.glitch':     { type: 'quiz', glitch: true },
+  'quiz.snippet':    { type: 'quiz', snippet: true },
+  'quiz.auction':    { type: 'quiz', stake: 'auction' },
+  'quiz.cat':        { type: 'quiz', stake: 'cat' },
+  'show.charades':   { type: 'show', showMode: 'charades' },
+  'show.karaoke':    { type: 'show', showMode: 'karaoke' },
+  'show.alias':      { type: 'show', showMode: 'alias' },
+  'everyone.number': { type: 'everyone', everyoneMode: 'number' },
+  'everyone.tierlist': { type: 'everyone', everyoneMode: 'tierlist' },
+  'everyone.whosaid':  { type: 'everyone', everyoneMode: 'whosaid' },
+  sketch:   { type: 'sketch' },
+  among_us: { type: 'among_us' },
+  potato:   { type: 'potato' },
+  reaction: { type: 'reaction' },
+  rps:      { type: 'rps' },
+}
+
+// Бейдж ячейки отражает модификатор/режим — ведущему важно видеть его на сетке
+function badgeFor(q) {
+  if (q.type === 'quiz') {
+    if (q.stake === 'cat') return { label: 'Кот', tone: '#e8a13a' }
+    if (q.stake === 'auction') return { label: 'Аукцион', tone: '#e8c24a' }
+    if (q.glitch) return { label: 'Глитч', tone: '#b07bff' }
+    if (q.snippet) return { label: 'Фрагмент', tone: '#fab1a0' }
+    if (q.answerMode === 'written') return { label: 'Письменно', tone: '#8f7cf0' }
+    if (q.mediaSrc) return { label: 'Медиа', tone: '#3da9fc' }
+    return { label: 'Баззер', tone: '#9aa9bd' }
+  }
+  if (q.type === 'show') {
+    return { charades: { label: 'Крокодил', tone: '#00cec9' }, karaoke: { label: 'Караоке', tone: '#e84393' }, alias: { label: 'Алиас', tone: '#6c5ce7' } }[q.showMode]
+      || { label: 'Шоу', tone: '#e84393' }
+  }
+  if (q.type === 'everyone') {
+    return { number: { label: 'Число', tone: '#3da9fc' }, tierlist: { label: 'Тир-лист', tone: '#00b894' }, whosaid: { label: 'Кто сказал', tone: '#a29bfe' } }[q.everyoneMode]
+      || { label: 'Все', tone: '#00b894' }
+  }
+  const meta = TYPE_META[q.type]
+  return meta ? { label: meta.short, tone: meta.tone } : { label: q.type || '?', tone: '#9aa9bd' }
+}
+
+// Видимость полей — теперь функции от вопроса (тип + модификаторы)
+const showsQ = (q) => !['rps', 'reaction'].includes(q.type)
+const showsA = (q) => {
+  if (q.type === 'quiz' || q.type === 'among_us') return true
+  if (q.type === 'show') return q.showMode !== 'alias'
+  if (q.type === 'everyone') return (q.everyoneMode || 'number') === 'number'
+  return false
+}
+const showsMedia = (q) => q.type === 'quiz' || (q.type === 'show' && q.showMode === 'karaoke')
 
 const local = reactive({ name: '', data: { rounds: [] } })
 const activeRound = ref(0)
@@ -317,46 +417,75 @@ const shelfTarget = ref(null) // вопрос/объект, куда «Из по
 const round = computed(() => local.data.rounds[activeRound.value] || null)
 const editQ = computed(() => editing.value ? editing.value.cat.questions[editing.value.qi] : {})
 
-// Подсказка по механике типа (показывается над полями)
-const TYPE_HINT = {
-  charades: 'Ведущий тайно показывает слово исполнителю; тот объясняет голосом, не называя.',
-  karaoke:  'Исполнитель получает реф-аудио в наушник и напевает; остальные угадывают.',
-  alias:    'Исполнителю по одному приходят слова; объясняет всем, ведущий отмечает угадавших.',
-  snippet:  'Фрагмент (аудио/видео/фото). «Открыть больше» снижает очки; отгадывают по баззеру.',
-  rps:      'Ведущий выбирает двух дуэлянтов; они тайно выбирают, победителю очки. Контент не нужен.',
-  number:   'Все вводят число/год/дату; ближайший к ответу получает очки.',
-  tierlist: 'Каждый объект оценивают ползунком 1–10; очки — за близость к медиане группы.',
-  potato:   'Игроки по кругу называют варианты на скрытом таймере; на ком «взорвётся» — теряет очки.',
-  whosaid:  'Все анонимно пишут ответ на промпт; затем угадывают, чей ответ.',
-  reaction: 'Движок сам строит сетку и правило; первый верный тап получает очки. Контент не нужен.',
+// Подсказка по механике (тип + режим/модификатор, показывается над полями)
+function hintFor(q) {
+  if (q.type === 'quiz') {
+    if (q.stake === 'auction') return 'Ставки вслепую; максимальная ставка определяет отвечающего. Неверно — минус ставка, вопрос закрывается.'
+    if (q.stake === 'cat') return 'Рулетка выбирает случайную «жертву» — отвечает только она.'
+    if (q.snippet) return 'Фрагмент (аудио/видео/фото). «Открыть больше» снижает очки; отгадывают по баззеру.'
+    if (q.glitch) return 'Текст показан глитч-анимацией; первый нажавший сразу отвечает.'
+    if (q.answerMode === 'written') return 'Все игроки пишут ответ текстом; ведущий вскрывает и судит каждого.'
+    return 'Классика: ведущий читает вопрос, баззер, первый ответивший.'
+  }
+  if (q.type === 'show') {
+    return {
+      charades: 'Ведущий тайно показывает слово исполнителю; тот объясняет жестами/голосом, не называя.',
+      karaoke: 'Исполнитель получает реф-аудио в наушник и напевает; остальные угадывают.',
+      alias: 'Исполнителю по одному приходят слова; объясняет всем, ведущий отмечает угадавших.'
+    }[q.showMode] || 'Один исполняет — остальные угадывают. Выберите режим.'
+  }
+  if (q.type === 'everyone') {
+    return {
+      number: 'Все вводят число/год/дату; ближайший к ответу получает очки.',
+      tierlist: 'Каждый объект оценивают ползунком 1–10; очки — за близость к медиане группы.',
+      whosaid: 'Все анонимно пишут ответ на промпт; затем угадывают, чей ответ.'
+    }[q.everyoneMode] || 'Все отвечают одновременно. Выберите режим.'
+  }
+  return {
+    rps: 'Ведущий выбирает двух дуэлянтов; они тайно выбирают, победителю очки. Контент не нужен.',
+    potato: 'Игроки по кругу называют варианты на скрытом таймере; на ком «взорвётся» — теряет очки.',
+    reaction: 'Движок сам строит сетку и правило; первый верный тап получает очки. Контент не нужен.',
+    sketch: 'Все рисуют на канвасе; голосование за лучший рисунок, ведущий награждает.',
+    among_us: 'Скрытый шпион отвечает на другой вопрос; обсуждение и голосование.'
+  }[q.type] || ''
 }
 const qPlaceholder = computed(() => {
-  switch (editQ.value.type) {
-    case 'potato':   return 'Категория (например: «Марки машин»)'
-    case 'whosaid':  return 'Промпт (например: «Самый неловкий момент»)'
-    case 'charades':
-    case 'karaoke':  return 'Инструкция (необязательно)'
-    case 'number':   return 'Вопрос (например: «В каком году…»)'
-    default:         return 'Текст вопроса'
-  }
+  const q = editQ.value
+  if (q.type === 'potato') return 'Категория (например: «Марки машин»)'
+  if (q.type === 'everyone' && q.everyoneMode === 'whosaid') return 'Промпт (например: «Самый неловкий момент»)'
+  if (q.type === 'everyone' && q.everyoneMode === 'number') return 'Вопрос (например: «В каком году…»)'
+  if (q.type === 'show') return 'Инструкция (необязательно)'
+  return 'Текст вопроса'
 })
 const aPlaceholder = computed(() => {
-  switch (editQ.value.type) {
-    case 'karaoke':  return 'Название песни'
-    case 'charades': return 'Слово для показа'
-    case 'number':   return editQ.value.numberKind === 'date' ? 'Ответ: ГГГГ-ММ-ДД'
-                          : editQ.value.numberKind === 'year' ? 'Ответ: год' : 'Ответ: число'
-    default:         return 'Ответ'
-  }
+  const q = editQ.value
+  if (q.type === 'show' && q.showMode === 'karaoke') return 'Название песни'
+  if (q.type === 'show') return 'Слово для показа'
+  if (q.type === 'everyone') return q.numberKind === 'date' ? 'Ответ: ГГГГ-ММ-ДД'
+    : q.numberKind === 'year' ? 'Ответ: год' : 'Ответ: число'
+  return 'Ответ'
 })
 
 function flash(text, err = false) { msg.value = text; msgErr.value = err; setTimeout(() => (msg.value = ''), 4000) }
 
-// Ленивая инициализация полей-массивов + умные дефолты при выборе типа
+// Ленивая инициализация полей-массивов + умные дефолты при выборе типа/режима
 function ensureTypeFields(q) {
-  if (q.type === 'alias') { if (!Array.isArray(q.words)) q.words = ['']; if (q.timerSec == null) q.timerSec = 60 }
-  if (q.type === 'tierlist' && !Array.isArray(q.items)) q.items = [{ label: '' }]
-  if (q.type === 'number' && !q.numberKind) q.numberKind = 'number'
+  if (q.type === 'quiz') {
+    if (!q.answerMode) q.answerMode = 'buzzer'
+    if (!q.stake) q.stake = 'none'
+  }
+  if (q.type === 'show') {
+    if (!q.showMode) q.showMode = 'charades'
+    if (q.showMode === 'alias') {
+      if (!Array.isArray(q.words)) q.words = ['']
+      if (q.timerSec == null) q.timerSec = 60
+    }
+  }
+  if (q.type === 'everyone') {
+    if (!q.everyoneMode) q.everyoneMode = 'number'
+    if (q.everyoneMode === 'number' && !q.numberKind) q.numberKind = 'number'
+    if (q.everyoneMode === 'tierlist' && !Array.isArray(q.items)) q.items = [{ label: '' }]
+  }
 }
 
 // Абсолютный URL медиа для превью в редакторе
@@ -515,7 +644,8 @@ function fillBlanksWithStubs() {
   let count = 0
   local.data.rounds.forEach(r => (r.categories || []).forEach(c => (c.questions || []).forEach(q => {
     if (!isBlank(q)) return
-    fillMissing(q, stubForType(q.type, theme))
+    // Сам вопрос — источник модификаторов (stake/snippet/showMode/everyoneMode…)
+    fillMissing(q, stubForType(q.type, theme, 0, q))
     count++
   })))
   const remaining = packStats.value.blank
@@ -529,7 +659,7 @@ function addCategory(r) { r.categories.push({ category: 'Новая катего
 function removeCategory(r, ci) { r.categories.splice(ci, 1) }
 function addQuestion(cat) {
   const points = (cat.questions.length + 1) * 100
-  const q = { points, type: 'text', q: '', a: '' }
+  const q = { points, type: 'quiz', q: '', a: '' }
   cat.questions.push(q)
   openQuestion(cat, cat.questions.length - 1)
 }
@@ -555,8 +685,18 @@ function jumpToCell(ri, ci, qi) {
 }
 
 // Command-palette типа: смена недеструктивна — q/a/points сохраняются, ensureTypeFields
-// лениво добавляет недостающие поля нового типа, ничего не удаляет
-function onTypeSelect(key) { editQ.value.type = key; ensureTypeFields(editQ.value) }
+// лениво добавляет недостающие поля, ничего не удаляет. Пресеты (quiz.auction и т.п.)
+// патчат тип и модификаторы разом; чистые модификаторы сбрасываются перед патчем,
+// чтобы «Викторина · Глитч» после «Викторина · Аукцион» не унаследовала ставку.
+function onTypeSelect(key) {
+  const patch = PALETTE_APPLY[key] || { type: key }
+  const q = editQ.value
+  if (patch.type === 'quiz') {
+    q.answerMode = 'buzzer'; q.stake = 'none'; q.glitch = false; q.snippet = false
+  }
+  Object.assign(q, patch)
+  ensureTypeFields(q)
+}
 
 // Медиа-полка: target=null → просмотр/GC; target=вопрос/объект → «Использовать здесь» подставит файл
 function openShelf(target = null) { shelfTarget.value = target; showShelf.value = true }

@@ -20,7 +20,6 @@ export function makeMockSocket(store) {
   const secretFor = (payload) => (canSeeSecret() ? payload : null)
 
   function dispatch(ev, data) {
-    const type = q().type
     switch (ev) {
       // --- Общие ---
       case 'host:startBuzzer':
@@ -95,21 +94,20 @@ export function makeMockSocket(store) {
         later(() => { store.answeringPlayerId = store.catTargetId; store.questionStatus = 'answering' }, 2500)
         break
       }
-      case 'player:pokerAction': break // визуально ход ведёт сервер; в моке опускаем
-
-      // --- Скелет исполнителя (charades/karaoke/alias) ---
+      // --- Скелет исполнителя (шоу: крокодил/караоке/алиас по showMode) ---
       case 'host:setPerformer': {
         const target = data != null ? ps().find(p => String(p.id) === String(data)) : ps()[0]
         if (!target) break
         store.performerId = target.id
-        if (type === 'alias') {
+        const showMode = q().showMode || 'charades'
+        if (showMode === 'alias') {
           const words = (q().words || []).filter(w => w && String(w).trim())
           store.aliasState = { index: 0, total: words.length || 5, guessedCount: 0, timerSec: q().timerSec || 60, endsAt: Date.now() + (q().timerSec || 60) * 1000, wordPoints: 50 }
           store.questionStatus = 'alias_playing'
           store.privateReveal = secretFor({ kind: 'alias', text: words[0] || 'СЛОВО', index: 0, total: words.length || 5 })
         } else {
           store.questionStatus = 'performing'
-          store.privateReveal = secretFor(type === 'karaoke'
+          store.privateReveal = secretFor(showMode === 'karaoke'
             ? { kind: 'karaoke', text: q().a || 'Песня', mediaSrc: q().mediaSrc || null, mediaType: q().mediaType || null }
             : { kind: 'charades', text: q().a || 'ЖИРАФ', prompt: q().q || '' })
         }

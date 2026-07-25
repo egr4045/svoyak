@@ -1,14 +1,14 @@
 <template>
   <div class="flex flex-col items-center gap-2 w-full">
 
-    <!-- Карточки игроков -->
-    <div class="flex justify-center gap-4 md:gap-8 w-full flex-wrap">
+    <!-- Карточки игроков: флюид-ширина, на телефоне — горизонтальная лента -->
+    <div class="flex gap-2 md:gap-6 w-full flex-nowrap overflow-x-auto md:flex-wrap md:overflow-visible md:justify-center pb-1 md:pb-0 px-1">
       <div v-for="player in store.players" :key="player.id"
-           class="flex flex-col items-center transition-all duration-300 relative"
+           class="flex flex-col items-center transition-all duration-300 relative shrink-0 player-card-wrap"
            @contextmenu="onPlayerContextMenu(player, $event, 'player')"
            :class="{
-             'scale-110 z-20': store.answeringPlayerId === player.id,
-             'opacity-50 scale-95 grayscale-[0.3]': store.answeringPlayerId !== null && store.answeringPlayerId !== player.id
+             'md:scale-110 z-20': store.answeringPlayerId === player.id,
+             'opacity-50 md:scale-95 grayscale-[0.3]': store.answeringPlayerId !== null && store.answeringPlayerId !== player.id
            }">
 
         <!-- Индикатор статуса (ВЫБОР / ОТВЕТ) -->
@@ -18,36 +18,44 @@
         </div>
         <div v-if="store.answeringPlayerId === player.id"
              class="absolute -top-4 w-full flex justify-center z-30">
-             <span class="bg-hub-accent text-white text-[9px] font-black px-3 py-1 rounded-full shadow-[0_0_15px_rgba(73,160,90,0.5)] uppercase tracking-tighter animate-pulse">Отвечает</span>
+             <span class="bg-hub-accent text-white text-[9px] font-black px-3 py-1 rounded-full glow-accent uppercase tracking-tighter animate-pulse">Отвечает</span>
         </div>
 
-        <!-- Основная карточка -->
-        <div class="bg-hub-panel border-2 rounded-2xl p-2 flex flex-col items-center shadow-2xl relative transition-all backdrop-blur-md"
-             :style="{ width: cardSize + 'px' }"
-             :class="store.answeringPlayerId === player.id ? 'border-hub-accent shadow-[0_0_25px_rgba(73,160,90,0.3)]' : 'border-hub-border'">
+        <!-- Плавающая дельта счёта (+N / −N) -->
+        <div v-if="scoreFx[player.id]" :key="scoreFx[player.id].key"
+             class="absolute -top-2 right-0 z-40 pointer-events-none font-display font-black text-lg score-float"
+             :class="scoreFx[player.id].delta > 0 ? 'text-party-lime' : 'text-hub-negative'">
+          {{ scoreFx[player.id].delta > 0 ? '+' : '' }}{{ scoreFx[player.id].delta }}
+        </div>
+
+        <!-- Основная карточка (без вложенного blur: футер уже блюрит) -->
+        <div class="border-2 rounded-2xl p-1.5 md:p-2 flex flex-col items-center shadow-2xl relative transition-all player-card"
+             :class="store.answeringPlayerId === player.id ? 'border-hub-accent glow-accent' : 'border-hub-border'">
 
           <!-- Аватар + живая камера из звонка -->
-          <div :style="{ width: avatarSize + 'px', height: avatarSize + 'px' }"
-               class="bg-hub-deep rounded-xl mb-1 flex items-center justify-center relative overflow-hidden transition-all"
-               :class="voiceOf(player)?.speaking ? 'ring-2 ring-hub-accent shadow-[0_0_12px_rgba(73,160,90,0.5)]' : 'ring-1 ring-hub-border'">
+          <div class="avatar-box bg-hub-deep rounded-xl mb-1 flex items-center justify-center relative overflow-hidden transition-all"
+               :class="voiceOf(player)?.speaking ? 'ring-2 ring-hub-accent' : 'ring-1 ring-hub-border'">
              <img v-if="player.avatar && store.avatarIsImage(player.avatar)" :src="store.getAvatarUrl(player.avatar)" class="w-full h-full object-cover">
-             <span v-else-if="player.avatar" :class="avatarSize < 60 ? 'text-2xl' : 'text-4xl'">{{ player.avatar }}</span>
-             <MonitorPlay v-else :class="avatarSize < 60 ? 'w-5 h-5' : 'w-8 h-8'" class="text-hub-border" />
+             <span v-else-if="player.avatar" class="avatar-emoji">{{ player.avatar }}</span>
+             <MonitorPlay v-else class="w-6 h-6 text-hub-border" />
              <PlayerVideo v-if="player.platformId && voiceOf(player)?.camOn" :account-id="player.platformId" />
              <div v-if="voiceOf(player) && !voiceOf(player).micOn" class="absolute bottom-0.5 right-0.5 z-20 text-[10px] bg-hub-deep/80 rounded px-0.5" title="Микрофон выключен">🔇</div>
+             <div v-if="!player.connected" class="absolute inset-0 z-20 bg-black/60 flex items-center justify-center text-xl" title="Отключился">🔌</div>
              <div v-if="store.answeringPlayerId === player.id" class="absolute inset-0 bg-gradient-to-t from-hub-accent/30 to-transparent"></div>
           </div>
 
           <!-- Текст -->
-          <div class="text-center w-full max-w-[100px]">
-            <div class="text-[10px] md:text-xs font-black uppercase text-hub-muted truncate mb-1">{{ player.name }}</div>
-            <div :class="['text-xl md:text-2xl font-black', player.score > 0 ? 'text-hub-warning' : player.score < 0 ? 'text-hub-negative' : 'text-hub-text']">
+          <div class="text-center w-full">
+            <div class="text-[10px] md:text-xs font-black uppercase text-hub-muted truncate mb-0.5" :class="{ 'opacity-50': !player.connected }">{{ player.name }}</div>
+            <div :key="'s' + player.id + '-' + player.score"
+                 :class="['font-display text-lg md:text-2xl font-black anim-score-bump',
+                          player.score > 0 ? 'text-hub-warning' : player.score < 0 ? 'text-hub-negative' : 'text-hub-text']">
               {{ player.score }}
             </div>
           </div>
 
           <!-- Быстрые контролы ведущего (кик/профиль — по правому клику) -->
-          <div v-if="isHost" class="flex flex-col gap-1 mt-2 pt-2 border-t border-hub-border w-full">
+          <div v-if="isHost" class="flex flex-col gap-1 mt-1.5 pt-1.5 border-t border-hub-border w-full">
             <div class="flex gap-1 items-center justify-center">
                <input type="number" v-model.number="customAmounts[player.id]"
                         class="w-10 bg-hub-deep text-[10px] py-1 px-1 rounded border border-hub-border outline-none font-bold text-center text-hub-text" />
@@ -98,20 +106,19 @@ function onPlayerContextMenu(target, event, role) {
   showParticipantMenu(target, event, role)
 }
 
-const cardSize = computed(() => {
-  const count = store.players.length
-  if (count <= 4) return 140
-  if (count <= 6) return 120
-  if (count <= 8) return 100
-  return 90
-})
-const avatarSize = computed(() => {
-  const count = store.players.length
-  if (count <= 4) return 80
-  if (count <= 6) return 70
-  if (count <= 8) return 60
-  return 50
-})
+// Плавающая дельта очков: следим за счётом каждого игрока, показываем +N/−N на 1.6с
+const prevScores = new Map()
+const scoreFx = reactive({})
+watch(() => store.players.map(p => [p.id, p.score]), (now) => {
+  for (const [id, score] of now) {
+    const prev = prevScores.get(id)
+    if (prev !== undefined && prev !== score) {
+      scoreFx[id] = { delta: score - prev, key: Date.now() }
+      setTimeout(() => { if (scoreFx[id] && Date.now() - scoreFx[id].key > 1500) delete scoreFx[id] }, 1700)
+    }
+    prevScores.set(id, score)
+  }
+}, { deep: true })
 
 const customAmounts = reactive({})
 store.players.forEach(p => { customAmounts[p.id] = 100 })
@@ -124,4 +131,15 @@ watch(() => store.players, (players) => {
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+
+/* Флюид-размер карточки: от телефона до десктопа без ступеней по числу игроков */
+.player-card-wrap { width: clamp(84px, 11vw, 132px); }
+.player-card {
+  width: 100%;
+  background: rgba(16, 24, 38, 0.95); /* solid вместо blur: карточек до 16, под ними видео */
+  contain: layout paint;              /* изолируем перерисовки карточки с живой камерой */
+}
+.avatar-box { width: 100%; aspect-ratio: 1 / 1; }
+.avatar-emoji { font-size: clamp(1.5rem, 3.5vw, 2.5rem); }
+.score-float { animation: kf-float-up 1.6s ease-out both; }
 </style>

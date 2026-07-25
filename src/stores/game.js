@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { io } from 'socket.io-client'
 import { usePlatformStore } from './platform'
+import { activeMediaTime } from '../lib/mediaBus'
 
 // Доп-поля стейта для новых типов-мини-игр. Держим их списком, чтобы gameStateUpdated
 // копировал любое из них без правки под каждый тип (см. цикл в initSocket).
@@ -18,6 +19,16 @@ function extraStateDefaults() {
   }
 }
 const EXTRA_STATE_KEYS = Object.keys(extraStateDefaults())
+
+// Ключи слим-бродкаста gameStateUpdated (без roundsData — тот приходит отдельно при join/reset)
+const BROADCAST_KEYS = [
+  'host', 'gameStarted', 'roundsCount', 'currentRoundIndex', 'board', 'players', 'spectators',
+  'maxPlayers', 'activeCell', 'showAnswer', 'questionStatus', 'answeringPlayerId',
+  'selectingPlayerId', 'highlightedQuestion', 'failedPlayers', 'activeBet', 'glitchSeed',
+  'textAnswers', 'sketchAnswers', 'sketchVotes', 'imposterId', 'amongUsTimerState',
+  'amongUsResult', 'amongUsVotes', 'mediaState', 'revealedTextAnswers', 'auctionBets',
+  'catTargetId', 'auctionTiePlayers', 'eventLog', 'buzzerResults'
+]
 
 export const useGameStore = defineStore('game', {
   state: () => ({
@@ -38,7 +49,8 @@ export const useGameStore = defineStore('game', {
     // Game State
     host: null,
     gameStarted: false,
-    roundsData: [],
+    roundsData: [],   // приходит ТОЛЬКО при room:join (полный стейт) и resetGame — см. слим-бродкаст
+    roundsCount: 0,   // в слим-стейте вместо всего пака
     currentRoundIndex: 0,
     board: [],
     players: [],
@@ -56,11 +68,6 @@ export const useGameStore = defineStore('game', {
     textAnswers: {},
     sketchAnswers: {},
     sketchVotes: {},
-    pokerActivePlayers: [],
-    pokerBets: {},
-    pokerCurrentBet: 0,
-    pokerTurnIdx: 0,
-    pokerPlayersActed: [],
     imposterId: null,
     amongUsVotes: {},
     amongUsResult: null,
@@ -72,6 +79,9 @@ export const useGameStore = defineStore('game', {
     auctionTiePlayers: [],
     eventLog: [],
     buzzerResults: [],
+    // Синхронизация медиа: оценка дельты часов клиент↔сервер (sync:ping).
+    // Активный медиаэлемент живёт вне стора — см. src/lib/mediaBus.js
+    serverTimeDelta: 0,
     // Приватный/запечатанный показ (караоке/крокодил/алиас): секрет НЕ приходит в
     // gameStateUpdated, а адресным событием 'privateReveal' только исполнителю и ведущему
     privateReveal: null,
@@ -186,6 +196,7 @@ export const useGameStore = defineStore('game', {
       
       this.socket.on('connect', () => {
         this.connected = true;
+        this.syncServerClock();
         if (this.roomCode) {
           let spectate = false;
           try {
@@ -213,42 +224,18 @@ export const useGameStore = defineStore('game', {
       });
 
       this.socket.on('gameStateUpdated', (newState) => {
-        this.host = newState.host;
-        this.gameStarted = newState.gameStarted;
-        this.roundsData = newState.roundsData;
-        this.currentRoundIndex = newState.currentRoundIndex;
-        this.board = newState.board;
-        this.players = newState.players;
-        this.spectators = newState.spectators || [];
-        this.maxPlayers = newState.maxPlayers || 8;
-        this.activeCell = newState.activeCell;
-        this.showAnswer = newState.showAnswer;
-        this.questionStatus = newState.questionStatus;
-        this.answeringPlayerId = newState.answeringPlayerId;
-        this.selectingPlayerId = newState.selectingPlayerId;
-        this.highlightedQuestion = newState.highlightedQuestion;
-        this.failedPlayers = newState.failedPlayers;
-        this.activeBet = newState.activeBet;
-        this.glitchSeed = newState.glitchSeed;
-        this.textAnswers = newState.textAnswers;
-        this.sketchAnswers = newState.sketchAnswers;
-        this.sketchVotes = newState.sketchVotes;
-        this.pokerActivePlayers = newState.pokerActivePlayers;
-        this.pokerBets = newState.pokerBets;
-        this.pokerCurrentBet = newState.pokerCurrentBet;
-        this.pokerTurnIdx = newState.pokerTurnIdx;
-        this.pokerPlayersActed = newState.pokerPlayersActed;
-        this.imposterId = newState.imposterId;
-        this.amongUsTimerState = newState.amongUsTimerState;
-        this.amongUsResult = newState.amongUsResult;
-        this.mediaState = newState.mediaState || { status: 'stopped', currentTime: 0 };
-        this.revealedTextAnswers = newState.revealedTextAnswers;
-        this.auctionBets = newState.auctionBets;
-        this.catTargetId = newState.catTargetId;
-        this.auctionTiePlayers = newState.auctionTiePlayers;
-        this.eventLog = newState.eventLog;
-        this.buzzerResults = newState.buzzerResults || [];
-        this.amongUsVotes = newState.amongUsVotes || {};
+        // Слим-бродкаст: обычные обновления приходят БЕЗ roundsData (весь пак летит только
+        // при room:join адресно и при resetGame). Копируем по списку ключей.
+        for (const k of BROADCAST_KEYS) {
+          if (k in newState) this[k] = newState[k];
+        }
+        if ('roundsData' in newState) this.roundsData = newState.roundsData;
+        // Дефолты для полей, которых может не быть в старых/усечённых пейлоадах
+        this.spectators = this.spectators || [];
+        this.maxPlayers = this.maxPlayers || 8;
+        this.mediaState = this.mediaState || { status: 'stopped', anchorPosition: 0, anchorAt: 0 };
+        this.buzzerResults = this.buzzerResults || [];
+        this.amongUsVotes = this.amongUsVotes || {};
         // Копируем произвольные доп-поля новых типов (tier/number/potato/reaction/whosaid/rps),
         // не перечисляя каждое: если сервер прислал ключ — отражаем его в сторе как есть.
         for (const k of EXTRA_STATE_KEYS) {
@@ -278,6 +265,26 @@ export const useGameStore = defineStore('game', {
       if (assetPath.startsWith('http')) return assetPath;
       // Если путь начинается с /assets/, добавляем API_URL
       return `${this.API_URL}${assetPath}`;
+    },
+
+    // Оценка дельты часов клиент↔сервер (NTP-лайт: полу-RTT). Нужна для синхронизации
+    // позиции медиа: ожидаемая позиция считается от серверного якоря anchorAt.
+    syncServerClock() {
+      if (!this.socket) return;
+      const t0 = Date.now();
+      this.socket.emit('sync:ping', (serverNow) => {
+        const t1 = Date.now();
+        this.serverTimeDelta = serverNow - (t0 + t1) / 2;
+      });
+      // Периодическое уточнение (дрейф часов, смена сети)
+      clearInterval(this._clockTimer);
+      this._clockTimer = setInterval(() => {
+        if (!this.socket?.connected) return;
+        const s0 = Date.now();
+        this.socket.emit('sync:ping', (serverNow) => {
+          this.serverTimeDelta = serverNow - (s0 + Date.now()) / 2;
+        });
+      }, 30000);
     },
 
     // Универсальный мост для новых типов: компонент эмитит {name:'host:foo'|'player:bar', payload}.
@@ -316,11 +323,13 @@ export const useGameStore = defineStore('game', {
     submitTextAnswer(text) { this.socket?.emit('player:submitTextAnswer', { text }) },
     submitSketch(dataUrl) { this.socket?.emit('player:submitSketch', { dataUrl }) },
     voteSketch(targetPlayerId) { this.socket?.emit('player:voteSketch', targetPlayerId) },
-    pokerAction(action, amount = 0) { this.socket?.emit('player:pokerAction', { action, amount }) },
     startAmongUsTimer() { this.socket?.emit('host:startAmongUsTimer') },
     pauseAmongUsTimer(timeLeft) { this.socket?.emit('host:pauseAmongUsTimer', { timeLeft }) },
     resumeAmongUsTimer(timeLeft) { this.socket?.emit('host:resumeAmongUsTimer', { timeLeft }) },
-    controlMedia(params) { this.socket?.emit('host:controlMedia', params) },
+    // Ведущий шлёт позицию своего медиаэлемента как якорь синхронизации
+    controlMedia({ status }) {
+      this.socket?.emit('host:controlMedia', { status, position: activeMediaTime() });
+    },
     voteAmongUs(targetId) { this.socket?.emit('player:voteAmongUs', targetId) },
     revealAmongUs() { this.socket?.emit('host:revealAmongUs') },
     revealSketches() { this.socket?.emit('host:revealSketches') },

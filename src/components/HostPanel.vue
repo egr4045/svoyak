@@ -1,42 +1,46 @@
 <template>
-  <!-- Панель ведущего: видна во время открытого вопроса, ведёт по этапам любого типа -->
-  <div v-if="isHost && store.activeCell" class="panel-glass px-4 py-3 flex flex-wrap items-center gap-2 justify-center">
-    <span class="text-[10px] uppercase tracking-widest text-hub-muted font-black mr-1">{{ statusLabel }}</span>
+  <!-- «Пульт» ведущего: виден во время открытого вопроса, ведёт по этапам любого типа.
+       Группы: [этап + главное действие] · [медиа/таймер] · [ответ/закрыть] -->
+  <div v-if="isHost && store.activeCell" class="panel-glass px-2 md:px-4 py-2 md:py-3 flex flex-wrap items-center gap-x-3 gap-y-2 justify-center anim-rise-in">
+    <!-- Группа: этап + контекстное главное действие -->
+    <div class="flex items-center gap-2">
+      <span class="text-[10px] uppercase tracking-widest text-party-cyan font-black hidden sm:inline">{{ statusLabel }}</span>
+      <button v-if="primary" @click="primary.run"
+              class="hub-btn-primary px-5 md:px-6 py-2.5 text-sm uppercase tracking-wide"
+              :class="primary.tone === 'danger' ? '!bg-hub-negative' : primary.tone === 'positive' ? '!bg-hub-positive' : ''">
+        {{ primary.label }}
+      </button>
 
-    <!-- Контекстное главное действие (в т.ч. вскрытие/рулетка для «залипающих» типов) -->
-    <button v-if="primary" @click="primary.run"
-            class="hub-btn-primary px-6 py-2 text-sm uppercase tracking-wide"
-            :class="primary.tone === 'danger' ? '!bg-hub-negative' : primary.tone === 'positive' ? '!bg-hub-positive' : ''">
-      {{ primary.label }}
-    </button>
+      <!-- Верно / Неверно в состоянии ответа -->
+      <template v-if="store.questionStatus === 'answering'">
+        <button @click="store.correctAnswer" class="hub-btn-primary !bg-hub-positive px-5 md:px-6 py-2.5 text-sm">✓ Верно</button>
+        <button @click="store.wrongAnswer" class="hub-btn-primary !bg-hub-negative px-5 md:px-6 py-2.5 text-sm">✗ Неверно</button>
+      </template>
+    </div>
 
-    <!-- Верно / Неверно в состоянии ответа -->
-    <template v-if="store.questionStatus === 'answering'">
-      <button @click="store.correctAnswer" class="hub-btn-primary !bg-hub-positive px-6 py-2 text-sm">✓ Верно</button>
-      <button @click="store.wrongAnswer" class="hub-btn-primary !bg-hub-negative px-6 py-2 text-sm">✗ Неверно</button>
-    </template>
+    <!-- Группа: медиа + таймер амогуса -->
+    <div v-if="hasMedia || (store.questionStatus === 'among_us_voting' && store.amongUsTimerState)"
+         class="flex items-center gap-2 border-l border-hub-border pl-3">
+      <button v-if="hasMedia"
+              @click="store.controlMedia({ status: store.mediaState?.status === 'playing' ? 'stopped' : 'playing' })"
+              class="hub-btn px-4 py-2.5 text-sm"
+              :class="store.mediaState?.status === 'playing' ? '!border-party-cyan !text-party-cyan' : ''">
+        {{ store.mediaState?.status === 'playing' ? '⏹ Стоп медиа' : '▶ Старт медиа' }}
+      </button>
+      <template v-if="store.questionStatus === 'among_us_voting' && store.amongUsTimerState">
+        <button v-if="store.amongUsTimerState.status === 'running'"
+                @click="store.pauseAmongUsTimer(store.amongUsTimerState.timeLeft)" class="hub-btn px-4 py-2.5 text-sm">⏸ Пауза</button>
+        <button v-else @click="store.resumeAmongUsTimer(store.amongUsTimerState.timeLeft)" class="hub-btn px-4 py-2.5 text-sm">▶ Продолжить</button>
+      </template>
+    </div>
 
-    <!-- Пауза/продолжение таймера Амогуса -->
-    <template v-if="store.questionStatus === 'among_us_voting' && store.amongUsTimerState">
-      <button v-if="store.amongUsTimerState.status === 'running'"
-              @click="store.pauseAmongUsTimer(store.amongUsTimerState.timeLeft)" class="hub-btn px-4 py-2 text-sm">⏸ Пауза</button>
-      <button v-else @click="store.resumeAmongUsTimer(store.amongUsTimerState.timeLeft)" class="hub-btn px-4 py-2 text-sm">▶ Продолжить</button>
-    </template>
-
-    <!-- Медиа (аудио/видео) -->
-    <button v-if="hasMedia"
-            @click="store.controlMedia({ status: store.mediaState?.status === 'playing' ? 'stopped' : 'playing' })"
-            class="hub-btn px-4 py-2 text-sm">
-      {{ store.mediaState?.status === 'playing' ? '⏹ Стоп медиа' : '▶ Старт медиа' }}
-    </button>
-
-    <!-- Показать ответ (локальный просмотр ведущего) -->
-    <button @click="store.showAnswer = !store.showAnswer" class="hub-btn px-4 py-2 text-sm">
-      {{ store.showAnswer ? '🙈 Скрыть ответ' : '👁 Ответ' }}
-    </button>
-
-    <!-- Закрыть вопрос -->
-    <button @click="store.closeQuestion" class="hub-btn px-4 py-2 text-sm !text-hub-negative">✕ Закрыть</button>
+    <!-- Группа: локальный просмотр ответа + закрыть -->
+    <div class="flex items-center gap-2 border-l border-hub-border pl-3">
+      <button @click="store.showAnswer = !store.showAnswer" class="hub-btn px-4 py-2.5 text-sm">
+        {{ store.showAnswer ? '🙈 Скрыть ответ' : '👁 Ответ' }}
+      </button>
+      <button @click="store.closeQuestion" class="hub-btn px-4 py-2.5 text-sm !text-hub-negative">✕ Закрыть</button>
+    </div>
   </div>
 </template>
 
@@ -63,7 +67,6 @@ const STATUS_LABELS = {
   among_us_voting: 'Голосование',
   sketch_drawing: 'Игроки рисуют',
   sketch_judging: 'Оценка рисунков',
-  poker_bidding: 'Покер-ставки',
   performer_select: 'Выбор исполнителя',
   performing: 'Идёт показ',
   alias_playing: 'Алиас: объясняют',

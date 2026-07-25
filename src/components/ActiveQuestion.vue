@@ -1,12 +1,7 @@
 <template>
-  <div v-if="store.activeCell" class="absolute inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-black/85 backdrop-blur-sm rounded-3xl">
-    <div class="panel-glass border-hub-accent/40 p-4 md:p-6 max-w-4xl w-full shadow-2xl flex flex-col text-center relative max-h-[95vh] overflow-y-auto">
+  <div v-if="store.activeCell" class="absolute inset-0 z-50 flex items-center justify-center p-0 sm:p-2 md:p-4 bg-black/85 sm:rounded-3xl anim-fade-in">
+    <div class="panel-glass border-hub-accent/40 p-3 sm:p-4 md:p-6 max-w-4xl w-full shadow-2xl flex flex-col text-center relative max-h-full sm:max-h-[92dvh] h-full sm:h-auto overflow-y-auto rounded-none sm:rounded-[14px] anim-pop-in">
       
-      <!-- Custom UI Alert -->
-      <div v-if="customAlert" class="fixed top-20 left-1/2 -translate-x-1/2 z-[100] bg-hub-negative border-2 border-hub-negative text-white font-bold px-8 py-4 rounded-2xl shadow-[0_0_30px_rgba(224,82,74,0.7)] animate-pulse transition-all">
-          ⚠️ {{ customAlert }}
-      </div>
-
       <!-- Confirm Reveal Dialog -->
       <div v-if="confirmRevealDialog" class="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
          <div class="panel-glass border-hub-negative/60 p-8 max-w-lg w-full flex flex-col items-center text-center">
@@ -24,26 +19,34 @@
         <span class="text-hub-warning font-bold">
           {{ store.activeBet !== null ? store.activeBet : store.currentQuestion.points }}
         </span>
-        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-if="store.currentQuestion.type === 'cat'">
+        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-if="store.currentQuestion.stake === 'cat'">
           Кот в мешке
         </span>
-        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-else-if="store.currentQuestion.type === 'auction'">
+        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-else-if="store.currentQuestion.stake === 'auction'">
           Аукцион
+        </span>
+        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-if="store.currentQuestion.glitch">
+          Глитч
+        </span>
+        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-if="store.currentQuestion.snippet">
+          Фрагмент
+        </span>
+        <span class="ml-2 px-2 py-0.5 bg-hub-warning/15 text-hub-warning rounded text-xs border border-hub-warning/30" v-if="store.currentQuestion.answerMode === 'written'">
+          Письменно
         </span>
       </div>
 
       <!-- Динамический контент по типам вопросов -->
-      <component :is="QuestionComponents[store.currentQuestion.type] || QuestionStandard"
+      <component :is="QuestionComponents[store.currentQuestion.type] || QuestionQuiz"
                  class="flex-1 w-full"
-                 @pokerAction="v => !store.isSpectator && store.pokerAction(v.action, v.amount)"
                  @vote="v => !store.isSpectator && (store.currentQuestion.type === 'sketch' ? store.voteSketch(v) : store.voteAmongUs(v))"
                  @submitSketch="v => !store.isSpectator && store.submitSketch(v)"
                  @submitBet="v => !store.isSpectator && store.submitAuctionBet(v)"
                  @pauseTimer="v => store.pauseAmongUsTimer(v)"
                  @resumeTimer="v => store.resumeAmongUsTimer(v)"
                  @awardWinner="v => store.awardSketchWinner(v)"
-                 @action="onAction" />      <!-- Обычный блок ввода ответов (text_input / text_inputting / text_judging) -->
-      <div v-if="store.currentQuestion.type === 'text_input' || store.questionStatus === 'text_inputting' || store.questionStatus === 'text_judging'" class="w-full flex flex-col items-center">
+                 @action="onAction" />      <!-- Обычный блок ввода ответов (письменный режим / ничья аукциона / амогус) -->
+      <div v-if="store.questionStatus === 'text_inputting' || store.questionStatus === 'text_judging'" class="w-full flex flex-col items-center">
         <div v-if="store.questionStatus === 'text_inputting'" class="w-full bg-hub-deep/50 p-6 rounded-xl border border-hub-border mb-8 max-w-2xl mx-auto">
 
           <!-- Для Ведущего: список игроков и статус -->
@@ -104,23 +107,25 @@
             <span v-if="!isHost" class="text-sm text-hub-muted mt-2">Приготовьтесь! Скоро начнётся отсчёт.</span>
           </div>
 
-          <div v-else-if="store.questionStatus === 'buzzer_countdown'" class="text-center w-full relative h-40 flex items-center justify-center">
-             <div :key="countdownNumber" class="text-[12rem] font-black text-hub-warning absolute inset-0 flex items-center justify-center pointer-events-none drop-shadow-[0_0_50px_rgba(232,161,58,0.8)] animate-pulse" style="animation-duration: 1s;">
+          <div v-else-if="store.questionStatus === 'buzzer_countdown'" class="text-center w-full relative h-32 md:h-40 flex items-center justify-center">
+             <div :key="countdownNumber" class="text-[8rem] md:text-[12rem] font-black font-display text-hub-warning absolute inset-0 flex items-center justify-center pointer-events-none text-glow-amber anim-countdown">
                {{ countdownNumber > 0 ? countdownNumber : 'ГОУ!' }}
              </div>
           </div>
 
-          <div v-else-if="store.questionStatus === 'buzzer_active' && !isHost && !store.isSpectator" @mousedown="handleScreenClick" class="absolute inset-0 z-50 rounded-3xl cursor-pointer flex flex-col justify-end items-center pb-8 group">
+          <!-- Баззер: pointerdown (тач/мышь/перо без задержки), вся площадь — кнопка,
+               визуальная пилюля прижата вниз под большой палец на телефоне -->
+          <div v-else-if="store.questionStatus === 'buzzer_active' && !isHost && !store.isSpectator" @pointerdown="handleScreenClick" class="absolute inset-0 z-50 sm:rounded-3xl cursor-pointer flex flex-col justify-end items-center pb-[12dvh] sm:pb-8 group touch-none select-none">
             <template v-if="myBuzzerResult">
-              <div class="absolute inset-0 rounded-3xl border-4 border-emerald-500/50 bg-emerald-900/40 pointer-events-none"></div>
-              <div class="text-3xl font-black text-emerald-400 bg-emerald-950/90 px-12 py-4 rounded-full border border-emerald-500 shadow-[0_0_30px_rgba(16,185,129,0.5)] pointer-events-none text-center">
-                ОТКЛИК ЗАРЕГИСТРИРОВАН!<br><span class="text-xl text-emerald-300 font-bold opacity-80 mt-2 block">Ваше время: {{ myBuzzerResult.time }} мс. Ожидайте...</span>
+              <div class="absolute inset-0 sm:rounded-3xl border-4 border-emerald-500/50 bg-emerald-900/40 pointer-events-none"></div>
+              <div class="text-xl md:text-3xl font-black text-emerald-400 bg-emerald-950/90 px-6 md:px-12 py-4 rounded-3xl border border-emerald-500 glow-accent pointer-events-none text-center anim-pop-in">
+                ОТКЛИК ЗАРЕГИСТРИРОВАН!<br><span class="text-base md:text-xl text-emerald-300 font-bold opacity-80 mt-2 block">Ваше время: {{ myBuzzerResult.time }} мс. Ожидайте...</span>
               </div>
             </template>
             <template v-else>
-              <div class="absolute inset-0 rounded-3xl border-4 border-rose-500/50 animate-pulse bg-rose-900/10 shadow-[inset_0_0_50px_rgba(225,29,72,0.2)] pointer-events-none"></div>
-              <div class="text-3xl font-black text-rose-400 bg-rose-950/80 px-12 py-4 rounded-full border border-rose-500 shadow-[0_0_30px_rgba(225,29,72,0.6)] group-hover:scale-105 transition-transform pointer-events-none">
-                ВРЕМЯ ПОШЛО — ЖМИТЕ!
+              <div class="absolute inset-0 sm:rounded-3xl border-4 border-party-pink/60 buzzer-frame pointer-events-none"></div>
+              <div class="text-2xl md:text-3xl font-black font-display text-party-pink bg-hub-deep/90 px-8 md:px-12 py-5 md:py-4 rounded-full border-2 border-party-pink glow-pink group-hover:scale-105 transition-transform pointer-events-none">
+                ЖМИТЕ!
               </div>
             </template>
           </div>
@@ -144,8 +149,6 @@
             </div>
           </div>
 
-          <div v-else-if="store.questionStatus === 'cat_target_selection'" class="text-purple-400 flex items-center gap-2">Выбор жертвы для Кота...</div>
-          <div v-else-if="store.questionStatus === 'auction_bidding'" class="text-yellow-400 flex items-center gap-2">Идут торги...</div>
           <div v-else-if="store.questionStatus === 'answering'" class="text-emerald-400 text-2xl font-black bg-emerald-900/30 px-6 py-2 rounded-full border border-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.3)]">
             <span v-if="store.answeringPlayerId === store.user?.id">ВЫ ОТВЕЧАЕТЕ</span>
             <span v-else>ОТВЕЧАЕТ: {{ activePlayerName }}</span>
@@ -170,45 +173,32 @@
 <script setup>
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '../stores/game'
+import { playSfx } from '../lib/sfx'
 import { Eye, EyeOff, Check, X, Play, Square, BellRing, Mic } from 'lucide-vue-next'
-import QuestionStandard from './questions/QuestionStandard.vue'
-import QuestionGlitch from './questions/QuestionGlitch.vue'
-import QuestionPoker from './questions/QuestionPoker.vue'
+import QuestionQuiz from './questions/QuestionQuiz.vue'
+import QuestionShow from './questions/QuestionShow.vue'
+import QuestionEveryone from './questions/QuestionEveryone.vue'
 import QuestionAmongUs from './questions/QuestionAmongUs.vue'
 import QuestionSketch from './questions/QuestionSketch.vue'
-import QuestionAuction from './questions/QuestionAuction.vue'
-import QuestionCat from './questions/QuestionCat.vue'
-import QuestionCharades from './questions/QuestionCharades.vue'
-import QuestionKaraoke from './questions/QuestionKaraoke.vue'
-import QuestionAlias from './questions/QuestionAlias.vue'
-import QuestionSnippet from './questions/QuestionSnippet.vue'
 import QuestionRps from './questions/QuestionRps.vue'
-import QuestionNumber from './questions/QuestionNumber.vue'
-import QuestionTierlist from './questions/QuestionTierlist.vue'
 import QuestionPotato from './questions/QuestionPotato.vue'
-import QuestionWhoSaid from './questions/QuestionWhoSaid.vue'
 import QuestionReaction from './questions/QuestionReaction.vue'
 
+// 8 типов ядра + легаси-алиасы (страховка: миграция паков на сервере — основной механизм)
 const QuestionComponents = {
-  text: QuestionStandard,
-  media: QuestionStandard,
-  text_input: QuestionStandard,
-  glitch: QuestionGlitch,
-  poker: QuestionPoker,
+  quiz: QuestionQuiz,
+  show: QuestionShow,
+  everyone: QuestionEveryone,
   among_us: QuestionAmongUs,
   sketch: QuestionSketch,
-  auction: QuestionAuction,
-  cat: QuestionCat,
-  charades: QuestionCharades,
-  karaoke: QuestionKaraoke,
-  alias: QuestionAlias,
-  snippet: QuestionSnippet,
   rps: QuestionRps,
-  number: QuestionNumber,
-  tierlist: QuestionTierlist,
   potato: QuestionPotato,
-  whosaid: QuestionWhoSaid,
-  reaction: QuestionReaction
+  reaction: QuestionReaction,
+  // легаси-id → новые компоненты
+  text: QuestionQuiz, media: QuestionQuiz, text_input: QuestionQuiz, glitch: QuestionQuiz,
+  snippet: QuestionQuiz, auction: QuestionQuiz, cat: QuestionQuiz, poker: QuestionQuiz,
+  charades: QuestionShow, karaoke: QuestionShow, alias: QuestionShow,
+  number: QuestionEveryone, tierlist: QuestionEveryone, whosaid: QuestionEveryone
 }
 
 const store = useGameStore()
@@ -223,15 +213,9 @@ function onAction({ name, payload } = {}) {
 }
 
 // Локальное состояние UI
-const customAlert = ref('')
 const confirmRevealDialog = ref(false)
-const manualPlayerId = ref('')
 const revealLoading = ref(false)
 const myTextAnswer = ref('')
-
-const myBalance = computed(() => {
-  return store.players.find(p => p.id === store.user?.id)?.score || 0
-})
 
 const activePlayerName = computed(() => {
   if (!store.answeringPlayerId) return ''
@@ -245,11 +229,11 @@ const canIAnswer = computed(() => {
   
   // Для шпиона Амогуса (когда идет text_inputting)
   if (store.currentQuestion?.type === 'among_us' && store.questionStatus === 'text_inputting') return true;
-  
-  // Ограничение для покера и аукциона (отвечают только живые/победители)
-  if (store.currentQuestion?.type === 'poker' && store.questionStatus === 'text_inputting' && !store.pokerActivePlayers.includes(store.user?.id)) return false;
-  if (store.questionStatus === 'text_inputting' && store.auctionTiePlayers?.length > 0 && !store.auctionTiePlayers.includes(store.user?.id)) return false;
-  
+
+  // Ничья аукциона: отвечают текстом только победители ставки (String — id могли пройти через ключи объектов)
+  if (store.questionStatus === 'text_inputting' && store.auctionTiePlayers?.length > 0
+      && !store.auctionTiePlayers.some(id => String(id) === String(store.user?.id))) return false;
+
   return true;
 })
 
@@ -262,16 +246,34 @@ const myBuzzerResult = computed(() => {
   return store.buzzerResults?.find(r => r.playerId === store.user?.id)
 })
 
-watch(() => store.questionStatus, (newStatus) => {
+// Снимок счёта отвечающего при входе в answering — чтобы по выходу понять «верно/неверно»
+// (сервер не шлёт отдельного события; знак дельты очков различает исходы для sfx)
+let answeringSnapshot = null
+
+watch(() => store.questionStatus, (newStatus, oldStatus) => {
   if (newStatus === 'buzzer_active') {
     localBuzzerActiveTime.value = Date.now()
+    playSfx('buzzer', { volume: 0.7 })
   }
-  
+
+  if (newStatus === 'answering' && store.answeringPlayerId) {
+    const p = store.players.find(x => String(x.id) === String(store.answeringPlayerId))
+    answeringSnapshot = p ? { id: p.id, score: p.score } : null
+  }
+  if (oldStatus === 'answering' && answeringSnapshot) {
+    const p = store.players.find(x => String(x.id) === String(answeringSnapshot.id))
+    if (p && p.score > answeringSnapshot.score) playSfx('correct')
+    else if (p && p.score < answeringSnapshot.score) playSfx('wrong', { volume: 0.8 })
+    answeringSnapshot = null
+  }
+
   if (newStatus === 'buzzer_countdown') {
     countdownNumber.value = 3;
+    playSfx('tick', { volume: 0.5 })
     if (countdownInterval) clearInterval(countdownInterval);
     countdownInterval = setInterval(() => {
       countdownNumber.value--;
+      playSfx(countdownNumber.value > 0 ? 'tick' : 'pop', { volume: 0.5 })
       if (countdownNumber.value <= 0) clearInterval(countdownInterval);
     }, 1000);
   } else {
@@ -301,24 +303,13 @@ function submitMyAnswer() {
   }
 }
 
-function awardManual(isCorrect) {
-  if (!manualPlayerId.value) return;
-  const pts = store.activeBet !== null ? store.activeBet : store.currentQuestion.points;
-  store.adjustScore(manualPlayerId.value, isCorrect ? pts : -pts);
-  manualPlayerId.value = '';
-}
-
-function showCustomAlert(msg) {
-  customAlert.value = msg;
-  setTimeout(() => { customAlert.value = '' }, 3000);
-}
-
-// Обработка кликов и клавиш (баззер)
+// Обработка нажатий (баззер): pointerdown/Space
 const handleScreenClick = () => {
   if (store.isSpectator) return;
   if (store.questionStatus === 'buzzer_active' && !isHost.value && !myBuzzerResult.value) {
     const reactionTime = Date.now() - localBuzzerActiveTime.value;
     store.pressBuzzer(reactionTime);
+    playSfx('pop');
   }
 }
 
@@ -336,13 +327,20 @@ onUnmounted(() => window.removeEventListener('keydown', handleKeydown))
 
 <style scoped>
 /* Прячем стрелочки в input type="number" */
-input[type=number]::-webkit-inner-spin-button, 
-input[type=number]::-webkit-outer-spin-button { 
-  -webkit-appearance: none; 
-  margin: 0; 
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 input[type=number] {
   -moz-appearance: textfield;
   appearance: textfield;
+}
+
+/* Рамка активного баззера: пульс opacity (не box-shadow) — дёшево для компоузера */
+.buzzer-frame {
+  background: color-mix(in srgb, var(--c-pink) 7%, transparent);
+  box-shadow: inset 0 0 50px color-mix(in srgb, var(--c-pink) 25%, transparent);
+  animation: kf-pulse-opacity 1s ease-in-out infinite;
 }
 </style>

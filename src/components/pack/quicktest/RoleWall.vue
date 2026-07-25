@@ -26,6 +26,6 @@ const props = defineProps({
   players: { type: Number, default: 3 }
 })
 
-const roles = computed(() => rolesFor(props.question?.type || 'text'))
+const roles = computed(() => rolesFor(props.question))
 function seesSecret(r) { return r === 'host' || r === 'performer' }
 </script>

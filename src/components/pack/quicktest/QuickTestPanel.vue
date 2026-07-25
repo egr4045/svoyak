@@ -67,9 +67,9 @@ const props = defineProps({
   initialRole: { type: String, default: 'host' }
 })
 
-const type = computed(() => props.question?.type || 'text')
-const roles = computed(() => rolesFor(type.value))
-const phases = computed(() => phasesFor(type.value))
+// Роли/фазы зависят не только от типа, но и от модификаторов (stake/snippet/showMode/…)
+const roles = computed(() => rolesFor(props.question))
+const phases = computed(() => phasesFor(props.question))
 
 const mode = ref('single')
 const role = ref(props.initialRole)

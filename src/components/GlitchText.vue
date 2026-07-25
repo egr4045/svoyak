@@ -24,8 +24,9 @@ const props = defineProps({
 })
 
 const displayedText = ref('')
-let flickerInterval = null
-let revealInterval = null
+let rafId = null
+let lastFlicker = 0
+let lastReveal = 0
 let revealedCount = 0
 let allIndices = []
 let revealedIndices = []
@@ -40,14 +41,13 @@ const glitchChars = '!<>-_\\/[]{}—=+*^?#_0101';
 function updateText() {
   if (props.isFinished) {
     displayedText.value = props.text;
-    if (flickerInterval) clearInterval(flickerInterval);
     return;
   }
   if (props.isPaused) return; // Заморозка анимации!
-  
+
   let result = '';
-  let localSeed = (props.seed || 123) + Math.floor(Date.now() / 50); 
-  
+  let localSeed = (props.seed || 123) + Math.floor(Date.now() / 50);
+
   for (let i = 0; i < props.text.length; i++) {
     if (revealedIndices.includes(i) || props.text[i] === ' ') {
       result += props.text[i];
@@ -58,16 +58,31 @@ function updateText() {
   displayedText.value = result;
 }
 
+// Один rAF-цикл вместо двух setInterval: скрэмбл ~20 к/с (шаг 50мс),
+// раскрытие буквы каждые 300мс. Вкладка в фоне не жжёт CPU (rAF спит).
+function tick(ts) {
+  if (props.isFinished) { displayedText.value = props.text; return; }
+  if (!props.isPaused) {
+    if (ts - lastFlicker >= 50) { lastFlicker = ts; updateText(); }
+    if (ts - lastReveal >= 300 && revealedCount < allIndices.length) {
+      lastReveal = ts;
+      revealedIndices.push(allIndices[revealedCount]);
+      revealedCount++;
+    }
+  }
+  rafId = requestAnimationFrame(tick);
+}
+
 onMounted(() => {
   revealedCount = 0;
   revealedIndices = [];
   allIndices = [];
-  
+
   // Собираем индексы букв (исключая пробелы)
   for(let i=0; i<props.text.length; i++) {
     if (props.text[i] !== ' ') allIndices.push(i);
   }
-  
+
   // Перемешиваем индексы псевдослучайно на основе seed
   let seedForShuffle = props.seed || 42;
   for (let i = allIndices.length - 1; i > 0; i--) {
@@ -76,34 +91,17 @@ onMounted(() => {
   }
 
   displayedText.value = props.text.replace(/[^ ]/g, '#');
-  flickerInterval = setInterval(updateText, 50);
-  
-  revealInterval = setInterval(() => {
-    if (props.isFinished) {
-      clearInterval(revealInterval);
-      return;
-    }
-    if (props.isPaused) return; // Пауза раскрытия
-    
-    if (revealedCount < allIndices.length) {
-      revealedIndices.push(allIndices[revealedCount]);
-      revealedCount++;
-    } else {
-      clearInterval(revealInterval);
-    }
-  }, 300); // Скорость раскрытия
+  rafId = requestAnimationFrame(tick);
 })
 
 onUnmounted(() => {
-  if (flickerInterval) clearInterval(flickerInterval);
-  if (revealInterval) clearInterval(revealInterval);
+  if (rafId) cancelAnimationFrame(rafId);
 })
 
 watch(() => props.isFinished, (val) => {
   if (val) {
     displayedText.value = props.text;
-    if (flickerInterval) clearInterval(flickerInterval);
-    if (revealInterval) clearInterval(revealInterval);
+    if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
   }
 })
 </script>

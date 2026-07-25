@@ -1,23 +1,29 @@
 // Проверка качества пака: единый источник правды для «пуст ли вопрос» (переиспользуется
 // PackEditor для бейджа ⚠/статистики/completeness) + более глубокие находки поверх него.
 
-// Каждый тип валиден по своим полям.
+// Каждый тип валиден по своим полям (тип + режим/модификаторы новой модели).
 export function isBlank(q) {
   const noQ = !q.q?.trim()
   const noA = !q.a?.trim()
   switch (q.type) {
     case 'reaction':
-    case 'rps':       return false                 // авто/без контента
+    case 'rps':      return false                  // авто/без контента
     case 'sketch':
-    case 'potato':
-    case 'whosaid':
-    case 'media':     return noQ                   // нужен только текст (вопрос/категория/промпт)
-    case 'charades':
-    case 'karaoke':   return noA                   // нужно слово/название; инструкция опциональна
-    case 'snippet':   return !q.mediaSrc || noA    // нужен фрагмент-медиа и ответ
-    case 'alias':     return !(q.words && q.words.some(w => w?.trim())) // ≥1 слово
-    case 'tierlist':  return !(q.items && q.items.some(it => it?.label?.trim() || it?.mediaSrc)) // ≥1 объект
-    default:          return noQ || noA            // обычные типы: вопрос + ответ
+    case 'potato':   return noQ                    // нужен только текст (задание/категория)
+    case 'among_us': return noQ || noA
+    case 'show':
+      if (q.showMode === 'alias') return !(q.words && q.words.some(w => w?.trim())) // ≥1 слово
+      return noA                                   // крокодил/караоке: нужно слово/название
+    case 'everyone':
+      if (q.everyoneMode === 'tierlist') return !(q.items && q.items.some(it => it?.label?.trim() || it?.mediaSrc)) // ≥1 объект
+      if (q.everyoneMode === 'whosaid') return noQ // нужен только промпт
+      return noQ || noA                            // число: вопрос + ответ
+    case 'quiz': {
+      if (q.snippet) return !q.mediaSrc || noA     // фрагменту нужен файл и ответ
+      const noContent = noQ && !q.mediaSrc         // вопрос текстом ИЛИ медиа
+      return noContent || noA
+    }
+    default:         return noQ || noA
   }
 }
 
@@ -61,14 +67,14 @@ export function lintPack(rounds) {
         if (isBlank(q)) {
           add('error', `Не заполнен вопрос за ${q.points} в «${catName}»`, ctx)
         }
-        if (q.type === 'number' && q.numberKind === 'date' && q.a && !isValidDateStr(q.a)) {
+        if (q.type === 'everyone' && q.everyoneMode === 'number' && q.numberKind === 'date' && q.a && !isValidDateStr(q.a)) {
           add('error', `Неверная дата (нужно существующую ГГГГ-ММ-ДД): «${q.a}»`, ctx)
         }
-        if (q.type === 'tierlist' && Array.isArray(q.items) &&
+        if (q.type === 'everyone' && q.everyoneMode === 'tierlist' && Array.isArray(q.items) &&
             q.items.filter(it => it?.label?.trim() || it?.mediaSrc).length === 1) {
           add('warning', `Тир-лист за ${q.points}: один объект — сравнивать нечего`, ctx)
         }
-        if (q.type === 'alias' && Array.isArray(q.words) && q.words.filter(w => w?.trim()).length < 3) {
+        if (q.type === 'show' && q.showMode === 'alias' && Array.isArray(q.words) && q.words.filter(w => w?.trim()).length < 3) {
           add('warning', `Алиас за ${q.points}: меньше 3 слов — раунд закончится очень быстро`, ctx)
         }
         if (dupPoints.has(q.points)) {

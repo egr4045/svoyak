@@ -32,7 +32,7 @@ class RpsHandler extends BaseQuestionHandler {
         if (ds.aId == null) ds.aId = target.id;
         else if (ds.bId == null && String(target.id) !== String(ds.aId)) ds.bId = target.id;
       }
-      io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+      gameState.broadcast(io);
 
     } else if (action === 'host:revealDuel') {
       if (ds.aReady && ds.bReady) this.resolve(gameState, io);
@@ -48,7 +48,7 @@ class RpsHandler extends BaseQuestionHandler {
       if (uid === String(ds.bId)) ds.bReady = true;
       ds.tie = false;
       if (ds.aReady && ds.bReady) this.resolve(gameState, io);
-      else io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+      else gameState.broadcast(io);
     }
   }
 
@@ -62,7 +62,7 @@ class RpsHandler extends BaseQuestionHandler {
       delete gameState.sealed[String(ds.aId)];
       delete gameState.sealed[String(ds.bId)];
       gameState.addLog('Ничья — выбираем заново.', 'info');
-      io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+      gameState.broadcast(io);
       return;
     }
     ds.tie = false;
@@ -71,7 +71,7 @@ class RpsHandler extends BaseQuestionHandler {
     gameState.adjustScore(ds.winnerId, q.points);
     const wName = gameState.state.players.find(p => p.id === ds.winnerId)?.name;
     gameState.addLog(`Победил ${wName} (${a} vs ${b}).`, 'success');
-    io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+    gameState.broadcast(io);
   }
 }
 

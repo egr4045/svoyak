@@ -2,6 +2,8 @@
  * Вспомогательные функции для тестирования серверной логики Svoyak.
  */
 
+const { questionExtraDefaults } = require('../game/GameState');
+
 function createMockGameState(overrides = {}) {
   const mockGS = {
     state: {
@@ -15,11 +17,6 @@ function createMockGameState(overrides = {}) {
       amongUsResult: null,
       amongUsTimerState: null,
       imposterId: null,
-      pokerActivePlayers: [],
-      pokerBets: {},
-      pokerCurrentBet: 0,
-      pokerTurnIdx: 0,
-      pokerPlayersActed: [],
       glitchSeed: null,
       catTargetId: null,
       sketchAnswers: {},
@@ -28,30 +25,8 @@ function createMockGameState(overrides = {}) {
       answeringPlayerId: null,
       failedPlayers: [],
       host: { id: 'host', name: 'Host', socketId: 'host-sock', connected: true },
-      // Доп-поля новых типов (упрощённый набор для тестов)
-      performerId: null,
-      performResult: null,
-      numberGuesses: {},
-      numberReveal: null,
-      tierRatings: {},
-      tierMedians: null,
-      tierResults: null,
-      tierSubmitted: [],
-      potatoRing: [],
-      potatoTurnId: null,
-      potatoResult: null,
-      reactionGrid: null,
-      reactionRule: null,
-      reactionWinnerId: null,
-      reactionDone: false,
-      whoSaidCount: 0,
-      whoSaidAnswers: null,
-      whoSaidGuesses: {},
-      whoSaidResult: null,
-      duelState: null,
-      aliasState: null,
-      aliasResult: null,
-      snippetLevel: 0,
+      // Доп-поля мини-игр — из единого источника правды (GameState)
+      ...questionExtraDefaults(),
       showAnswer: false,
       players: [
         { id: 'p1', name: 'Alice', score: 1000, connected: true, socketId: 'sock-p1' },
@@ -69,6 +44,11 @@ function createMockGameState(overrides = {}) {
     blankActiveQuestionFields: jest.fn(function (fields) {
       const q = mockGS.getCurrentQuestion();
       if (q) fields.forEach(f => { q[f] = null; });
+    }),
+    // Хендлеры рассылают стейт через broadcast(io); в моке эмитим сам state
+    // (боевой slimState тестируется отдельно в broadcast.test.js)
+    broadcast: jest.fn((io) => {
+      io.to(mockGS.roomCode).emit('gameStateUpdated', mockGS.state);
     }),
     addLog: jest.fn(),
     getCurrentQuestion: jest.fn().mockReturnValue({ points: 500 }),

@@ -1,43 +1,35 @@
 const db = require('../db/database');
 const initialGameData = require('./initialData');
-const StandardHandler = require('./questions/StandardHandler');
-const PokerHandler = require('./questions/PokerHandler');
+const { migratePack } = require('./packMigrate');
+const QuizHandler = require('./questions/QuizHandler');
+const ShowHandler = require('./questions/ShowHandler');
+const EveryoneHandler = require('./questions/EveryoneHandler');
 const AmongUsHandler = require('./questions/AmongUsHandler');
 const SketchHandler = require('./questions/SketchHandler');
-const AuctionHandler = require('./questions/AuctionHandler');
-const CatHandler = require('./questions/CatHandler');
-const GlitchHandler = require('./questions/GlitchHandler');
-const CharadesHandler = require('./questions/CharadesHandler');
-const KaraokeHandler = require('./questions/KaraokeHandler');
-const AliasHandler = require('./questions/AliasHandler');
-const SnippetHandler = require('./questions/SnippetHandler');
 const RpsHandler = require('./questions/RpsHandler');
-const NumberHandler = require('./questions/NumberHandler');
-const TierlistHandler = require('./questions/TierlistHandler');
 const PotatoHandler = require('./questions/PotatoHandler');
-const WhoSaidHandler = require('./questions/WhoSaidHandler');
 const ReactionHandler = require('./questions/ReactionHandler');
 
+// 8 типов ядра. Легаси-id (text/cat/karaoke/…) — алиасы на те же инстансы: это страховка
+// на случай немигрированного вопроса; основной механизм — migratePack на всех входах данных.
+const quiz = new QuizHandler();
+const show = new ShowHandler();
+const everyone = new EveryoneHandler();
+
 const HANDLERS = {
-  'text': new StandardHandler('text'),
-  'media': new StandardHandler('media'),
-  'text_input': new StandardHandler('text_input'),
-  'poker': new PokerHandler(),
+  'quiz': quiz,
+  'show': show,
+  'everyone': everyone,
   'among_us': new AmongUsHandler(),
   'sketch': new SketchHandler(),
-  'auction': new AuctionHandler(),
-  'cat': new CatHandler(),
-  'glitch': new GlitchHandler(),
-  'charades': new CharadesHandler(),
-  'karaoke': new KaraokeHandler(),
-  'alias': new AliasHandler(),
-  'snippet': new SnippetHandler(),
   'rps': new RpsHandler(),
-  'number': new NumberHandler(),
-  'tierlist': new TierlistHandler(),
   'potato': new PotatoHandler(),
-  'whosaid': new WhoSaidHandler(),
-  'reaction': new ReactionHandler()
+  'reaction': new ReactionHandler(),
+  // легаси-алиасы (сыграют в деградированном режиме без модификаторов, но не упадут)
+  'text': quiz, 'media': quiz, 'text_input': quiz, 'glitch': quiz,
+  'snippet': quiz, 'auction': quiz, 'cat': quiz, 'poker': quiz,
+  'charades': show, 'karaoke': show, 'alias': show,
+  'number': everyone, 'tierlist': everyone, 'whosaid': everyone
 };
 
 
@@ -49,11 +41,12 @@ function clampMaxPlayers(value) {
   return Math.min(16, Math.max(2, n));
 }
 
-// Достаём массив раундов из объекта пака {rounds:[...]} или принимаем массив как есть
+// Достаём массив раундов из объекта пака {rounds:[...]} или принимаем массив как есть.
+// Всегда прогоняем через migratePack: пак мог прийти из старого ZIP/БД с легаси-типами.
 function extractRounds(pack) {
-  if (Array.isArray(pack)) return pack;
-  if (pack && Array.isArray(pack.rounds)) return pack.rounds;
-  return initialGameData;
+  if (Array.isArray(pack)) return migratePack(pack);
+  if (pack && Array.isArray(pack.rounds)) return migratePack(pack.rounds);
+  return migratePack(initialGameData);
 }
 
 // Доп-поля стейта новых типов-мини-игр. Все обнуляются при выборе/закрытии вопроса,
@@ -110,11 +103,6 @@ class GameState {
       textAnswers: {},
       sketchAnswers: {},
       sketchVotes: {},
-      pokerActivePlayers: [],
-      pokerBets: {},
-      pokerCurrentBet: 0,
-      pokerTurnIdx: 0,
-      pokerPlayersActed: [],
       imposterId: null,
       amongUsVotes: {},
       amongUsResult: null,
@@ -122,7 +110,7 @@ class GameState {
       revealedTextAnswers: false,
       auctionBets: {},
       catTargetId: null,
-      mediaState: { status: 'stopped', currentTime: 0 },
+      mediaState: { status: 'stopped', anchorPosition: 0, anchorAt: 0 },
       eventLog: [],
       ...questionExtraDefaults()
     };
@@ -157,6 +145,22 @@ class GameState {
     const q = this.getCurrentQuestion();
     if (!q) return;
     for (const f of fields) q[f] = null;
+  }
+
+  // Слим-стейт: всё, кроме roundsData (весь пак). Пак летит только адресно при room:join
+  // и всем при resetGame — иначе каждый чих гонял мегабайты и перерендеривал клиентов.
+  slimState() {
+    const { roundsData, ...rest } = this.state;
+    return { ...rest, roundsCount: this.state.roundsData.length };
+  }
+
+  fullState() {
+    return { ...this.state, roundsCount: this.state.roundsData.length };
+  }
+
+  // Единая точка рассылки состояния комнаты (хендлеры зовут её вместо прямого emit)
+  broadcast(io) {
+    io.to(this.roomCode).emit('gameStateUpdated', this.slimState());
   }
 
   addLog(text, type = 'info') {
@@ -208,7 +212,7 @@ class GameState {
 
   promoteSpectator(spectatorId) {
     // Как и demotePlayer: смена роли только между вопросами, иначе ломается
-    // подсчёт голосов among_us / порядок хода в покере
+    // подсчёт голосов among_us / запечатанные сабмиты активного вопроса
     if (this.state.gameStarted && this.state.questionStatus !== 'idle') return false;
     if (this.state.players.length >= this.state.maxPlayers) return false;
     const idx = this.state.spectators.findIndex(s => String(s.id) === String(spectatorId));
@@ -231,9 +235,11 @@ class GameState {
     return true;
   }
 
+  // ВАЖНО: id сравниваем через String — реальные id из БД числовые, но ключи объектов
+  // (textAnswers/sealed/votes) всегда строки. Строгий === здесь молча ломал начисления.
   findParticipant(userId) {
-    return this.state.players.find(x => x.id === userId)
-      || this.state.spectators.find(x => x.id === userId);
+    return this.state.players.find(x => String(x.id) === String(userId))
+      || this.state.spectators.find(x => String(x.id) === String(userId));
   }
 
   removePlayer(playerId) {
@@ -255,9 +261,12 @@ class GameState {
     }
   }
 
-  setPlayerLoaded(userId, isLoaded) {
+  setPlayerLoaded(userId, isLoaded, failedAssets = 0) {
     const p = this.findParticipant(userId);
-    if (p) p.loadedAssets = isLoaded;
+    if (p) {
+      p.loadedAssets = isLoaded;
+      p.failedAssets = failedAssets; // сколько медиа не прогрузилось (⚠ в лобби у ведущего)
+    }
   }
 
   hasConnectedMembers() {
@@ -316,7 +325,9 @@ class GameState {
   }
 
   adjustScore(playerId, amount) {
-    const p = this.state.players.find(x => x.id === playerId);
+    // String-сравнение обязательно: playerId часто приходит ключом объекта (строкой),
+    // а p.id — числовой id из БД (см. комментарий у findParticipant)
+    const p = this.state.players.find(x => String(x.id) === String(playerId));
     if (p) {
       p.score += amount;
       const sign = amount > 0 ? '+' : '';
@@ -340,17 +351,17 @@ class GameState {
     this.state.activeBet = null;
     this.state.auctionBets = {};
     this.state.catTargetId = null;
-    this.state.mediaState = { status: 'stopped', currentTime: 0 };
+    this.state.mediaState = { status: 'stopped', anchorPosition: 0, anchorAt: 0 };
     this.resetQuestionExtras();
 
-    const handler = HANDLERS[q.type] || HANDLERS['text'];
+    const handler = HANDLERS[q.type] || HANDLERS['quiz'];
     handler.onSelect(this, q);
   }
 
   getHandler() {
     const q = this.getCurrentQuestion();
     if (!q) return null;
-    return HANDLERS[q.type] || HANDLERS['text'];
+    return HANDLERS[q.type] || HANDLERS['quiz'];
   }
 
   // Пост-выбор с доступом к io (roomHandlers вызывает сразу после selectQuestion)
@@ -431,8 +442,6 @@ class GameState {
     this.state.auctionTiePlayers = [];
     this.state.textAnswers = {};
     this.state.sketchAnswers = {};
-    this.state.pokerActivePlayers = [];
-    this.state.pokerBets = {};
     this.state.failedPlayers = [];
     this.state.highlightedQuestion = null;
     this.state.activeBet = null;
@@ -446,8 +455,10 @@ class GameState {
   }
 
   setSelectingPlayer(playerId) {
-    this.state.selectingPlayerId = playerId;
-    const p = this.state.players.find(x => x.id === playerId);
+    // Канонизируем id по объекту игрока: если пришла строка (ключ объекта),
+    // в стейт кладём настоящий id — клиентские === сравнения остаются простыми
+    const p = this.state.players.find(x => String(x.id) === String(playerId));
+    this.state.selectingPlayerId = p ? p.id : playerId;
     if (p) this.addLog(`Право выбора передано: ${p.name}`, 'info');
   }
 
@@ -461,3 +472,6 @@ class GameState {
 }
 
 module.exports = GameState;
+// Единый источник правды для доп-полей стейта мини-игр: тесты (test-utils) берут его
+// отсюда, а клиентское зеркало живёт в src/stores/game.js (граница CJS/ESM)
+module.exports.questionExtraDefaults = questionExtraDefaults;

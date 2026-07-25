@@ -65,15 +65,6 @@ export const TYPES = {
     }
   },
   glitch: { roles: ['host', 'answering', 'player', 'spectator'], phases: BUZZER_PHASES, seed: (p, { phase, players }) => { p.glitchSeed = 42; buzzerSeed(p, phase, players) } },
-  poker: {
-    roles: ['host', 'pokerActive', 'player', 'spectator'],
-    phases: [{ status: 'poker_bidding', label: 'ставки' }, { status: 'text_inputting', label: 'ответ банка' }],
-    seed: (p, { phase, players }) => {
-      const ids = players.map(x => x.id)
-      if (phase.status === 'poker_bidding') { p.pokerActivePlayers = ids; p.pokerBets = { [ids[0]]: 100 }; p.pokerCurrentBet = 100; p.pokerTurnIdx = 1; p.pokerPlayersActed = [ids[0]] }
-      else { p.pokerActivePlayers = [ids[0]]; p.activeBet = 300 }
-    }
-  },
   among_us: {
     roles: ['host', 'player', 'spectator'],
     phases: [{ status: 'text_inputting', label: 'ввод' }, { status: 'text_judging', label: 'проверка' }, { status: 'among_us_voting', label: 'голосование' }, { status: 'among_us_voting', label: 'итог', tag: 'result' }],
@@ -213,7 +204,29 @@ export const TYPES = {
 // Человеческие подписи ролей
 export const ROLE_LABELS = {
   host: 'Ведущий', answering: 'Отвечающий', player: 'Другой игрок', spectator: 'Наблюдатель',
-  performer: 'Исполнитель', holder: 'Держатель', duelistA: 'Дуэлянт', pokerActive: 'Активный игрок', imposter: 'Шпион'
+  performer: 'Исполнитель', holder: 'Держатель', duelistA: 'Дуэлянт', imposter: 'Шпион'
 }
 
-export function typeConfig(type) { return TYPES[type] || TYPES.text }
+// Новая модель типов: quiz/show/everyone + модификаторы вопроса. Конфиги выше остались
+// под внутренними ключами прежних механик — резолвим вопрос в нужный ключ.
+function configKey(q) {
+  const t = q.type
+  if (t === 'quiz') {
+    if (q.stake === 'auction') return 'auction'
+    if (q.stake === 'cat') return 'cat'
+    if (q.snippet) return 'snippet'
+    if (q.answerMode === 'written') return 'text_input'
+    if (q.glitch) return 'glitch'
+    if (q.mediaSrc || q.mediaType) return 'media'
+    return 'text'
+  }
+  if (t === 'show') return { charades: 'charades', karaoke: 'karaoke', alias: 'alias' }[q.showMode] || 'charades'
+  if (t === 'everyone') return { number: 'number', tierlist: 'tierlist', whosaid: 'whosaid' }[q.everyoneMode] || 'number'
+  return TYPES[t] ? t : 'text'
+}
+
+// Принимает вопрос (новая модель) или строку-легаси-id — возвращает конфиг механики
+export function typeConfig(q) {
+  const question = typeof q === 'string' ? { type: q } : (q || { type: 'quiz' })
+  return TYPES[configKey(question)] || TYPES.text
+}

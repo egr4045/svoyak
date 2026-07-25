@@ -1,4 +1,5 @@
 const roomManager = require('../managers/RoomManager');
+const { registerFunTools } = require('./funTools');
 
 function handleRoomEvents(io, socket, user) {
   // Join room
@@ -24,7 +25,10 @@ function handleRoomEvents(io, socket, user) {
       room.setPlayerConnection(user.id, socket.id, true);
     }
 
-    io.to(room.roomCode).emit('gameStateUpdated', room.state);
+    // Присоединившемуся — полный стейт (с roundsData: лобби прелоадит медиа пака),
+    // остальным — слим без пака (см. GameState.slimState)
+    socket.emit('gameStateUpdated', room.fullState());
+    socket.to(room.roomCode).emit('gameStateUpdated', room.slimState());
 
     // Приватный показ переживает реконнект: тело room:join выполняется на каждый (ре)коннект
     // (в т.ч. ниже гварда _handlersBound), а setPlayerConnection выше уже обновил socketId.
@@ -53,59 +57,63 @@ function handleRoomEvents(io, socket, user) {
       const member = room.state.host.id === user.id ? room.state.host : room.findParticipant(user.id);
       if (!member || member.socketId !== socket.id) return;
       room.setPlayerConnection(user.id, socket.id, false);
-      io.to(room.roomCode).emit('gameStateUpdated', room.state);
+      room.broadcast(io);
       roomManager.scheduleCleanup(room.roomCode);
     });
 
     socket.on('room:start', () => {
       if (room.state.host.id !== user.id) return;
       room.startGame();
-      io.to(room.roomCode).emit('gameStateUpdated', room.state);
+      room.broadcast(io);
     });
 
     // --- GAME ACTIONS (Host only mostly) ---
     const isHost = String(room.state.host.id) === String(user.id);
 
     if (isHost) {
-      socket.on('host:controlMedia', ({ status, currentTime }) => {
-        console.log(`[Media] Host ${user.username} controlled media: ${status}`);
-        room.state.mediaState = { status, currentTime: currentTime || 0 };
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+      // Якорь синхронизации: позиция медиа у ведущего + серверная метка времени.
+      // Клиенты считают ожидаемую позицию = anchorPosition + (now+delta − anchorAt)/1000
+      // (см. src/composables/useSyncedMedia.js) — опоздавшие стартуют с нужного места.
+      socket.on('host:controlMedia', ({ status, position }) => {
+        room.state.mediaState = { status, anchorPosition: Number(position) || 0, anchorAt: Date.now() };
+        room.broadcast(io);
       });
 
       socket.on('host:selectQuestion', ({ catIdx, qIdx }) => {
         room.selectQuestion(catIdx, qIdx);
         room.afterSelect({ io }); // типам с таймером/рассылкой при открытии (напр. картошка)
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       });
       socket.on('host:kickPlayer', (playerId) => {
         room.removePlayer(playerId);
         io.to(room.roomCode).emit('playerKicked', playerId);
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       });
       socket.on('host:resetGame', () => {
         room.resetGame();
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        // roundsData пересоздана из пака — единственный случай полного стейта всем
+        io.to(room.roomCode).emit('gameStateUpdated', room.fullState());
       });
       socket.on('host:closeQuestion', () => {
         room.closeQuestion();
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       });
       socket.on('host:adjustScore', ({ playerId, amount }) => {
         room.adjustScore(playerId, amount);
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       });
       socket.on('host:startBuzzer', () => {
         room.clearTimers();
         room.state.questionStatus = 'buzzer_countdown';
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
-        
+        room.broadcast(io);
+
         room.timers.buzzerStart = setTimeout(() => {
           room.state.questionStatus = 'buzzer_active';
           room.state.buzzerReceiving = true;
           room.state.buzzerResults = [];
+          room.state.buzzerOpenedAt = Date.now(); // серверный якорь для анти-чита реакции
           delete room.timers.buzzerFirstHit;
-          io.to(room.roomCode).emit('gameStateUpdated', room.state);
+          room.broadcast(io);
         }, 3000);
       });
       socket.on('host:correctAnswer', () => {
@@ -145,17 +153,17 @@ function handleRoomEvents(io, socket, user) {
       });
     socket.on('host:startRound', () => {
         room.startRound();
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       });
 
       socket.on('host:nextRound', () => {
         room.nextRound();
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       });
 
       socket.on('host:setSelectingPlayer', (playerId) => {
         room.setSelectingPlayer(playerId);
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       });
 
       socket.on('host:revealTextAnswers', () => {
@@ -168,15 +176,18 @@ function handleRoomEvents(io, socket, user) {
 
       socket.on('host:makeSpectator', (playerId) => {
         if (room.demotePlayer(playerId)) {
-          io.to(room.roomCode).emit('gameStateUpdated', room.state);
+          room.broadcast(io);
         }
       });
 
       socket.on('host:promoteSpectator', (spectatorId) => {
         if (room.promoteSpectator(spectatorId)) {
-          io.to(room.roomCode).emit('gameStateUpdated', room.state);
+          room.broadcast(io);
         }
       });
+
+      // Приколы ведущего: саундборд, эффекты, очковая рулетка (см. funTools.js)
+      registerFunTools(io, socket, room);
 
       // --- Ведущий-действия новых типов-мини-игр (делегируются текущему хендлеру) ---
       // Клиент шлёт их универсальным мостом emitAction; хендлер, не знающий действие, просто игнорит.
@@ -199,7 +210,7 @@ function handleRoomEvents(io, socket, user) {
       const isSpectator = room.state.spectators.some(s => String(s.id) === String(user.id));
       if (!isSpectator) return;
       if (room.promoteSpectator(user.id)) {
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       }
     });
 
@@ -209,7 +220,7 @@ function handleRoomEvents(io, socket, user) {
       const p = room.findParticipant(user.id);
       if (p && p.avatar !== avatar) {
         p.avatar = avatar;
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       }
     });
 
@@ -222,7 +233,7 @@ function handleRoomEvents(io, socket, user) {
       if (!isPlayer()) return;
       if (room.state.selectingPlayerId === user.id) {
         room.highlightQuestion(catIdx, qIdx);
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.broadcast(io);
       }
     });
 
@@ -232,14 +243,19 @@ function handleRoomEvents(io, socket, user) {
       if (room.state.failedPlayers.includes(user.id)) return;
       
       const q = room.getCurrentQuestion();
-      if (q && q.type === 'glitch') {
+      if (q && q.glitch === true) {
         room.handleAction('player:pressBuzzer', { reactionTime }, { io, socket, user });
         return;
       }
 
+      // Анти-чит: клиентское reactionTime клампим серверным таймингом. Подделанный «0 мс»
+      // не может быть меньше (серверное время с открытия баззера − 1200 мс форы на сеть).
+      const serverElapsed = room.state.buzzerOpenedAt ? Date.now() - room.state.buzzerOpenedAt : 0;
+      const effective = Math.max(Number(reactionTime) || 0, serverElapsed - 1200);
+
       if (!room.state.buzzerResults.find(r => r.playerId === user.id)) {
-        room.state.buzzerResults.push({ playerId: user.id, time: reactionTime || 0 });
-        io.to(room.roomCode).emit('gameStateUpdated', room.state);
+        room.state.buzzerResults.push({ playerId: user.id, time: effective });
+        room.broadcast(io);
       }
 
       if (room.state.questionStatus === 'buzzer_active' && !room.timers.buzzerFirstHit) {
@@ -247,12 +263,12 @@ function handleRoomEvents(io, socket, user) {
           room.state.buzzerReceiving = false;
           room.state.buzzerResults.sort((a, b) => a.time - b.time);
           room.state.questionStatus = 'buzzer_results';
-          io.to(room.roomCode).emit('gameStateUpdated', room.state);
+          room.broadcast(io);
           
           room.timers.buzzerShowResults = setTimeout(() => {
             room.state.questionStatus = 'answering';
             room.state.answeringPlayerId = room.state.buzzerResults[0].playerId;
-            io.to(room.roomCode).emit('gameStateUpdated', room.state);
+            room.broadcast(io);
           }, 3500);
           
         }, 5000); 
@@ -272,11 +288,6 @@ function handleRoomEvents(io, socket, user) {
     socket.on('player:submitSketch', ({ dataUrl }) => {
       if (!isPlayer()) return;
       room.handleAction('player:submitSketch', { dataUrl }, { io, socket, user });
-    });
-
-    socket.on('player:pokerAction', ({ action, amount }) => {
-      if (!isPlayer()) return;
-      room.handleAction('player:pokerAction', { action, amount }, { io, socket, user });
     });
 
     socket.on('player:voteSketch', (targetPlayerId) => {
@@ -304,9 +315,16 @@ function handleRoomEvents(io, socket, user) {
       });
     }
 
-    socket.on('player:loaded', () => {
-      room.setPlayerLoaded(user.id, true);
-      io.to(room.roomCode).emit('gameStateUpdated', room.state);
+    // failedCount — сколько медиафайлов НЕ загрузилось у игрока при прелоаде
+    // (лобби показывает ⚠ ведущему; игра всё равно стартует — см. LobbyView)
+    socket.on('player:loaded', (payload) => {
+      room.setPlayerLoaded(user.id, true, payload?.failedCount || 0);
+      room.broadcast(io);
+    });
+
+    // Часовой зонд для оценки дельты клиент↔сервер (синхронизация позиции медиа)
+    socket.on('sync:ping', (cb) => {
+      if (typeof cb === 'function') cb(Date.now());
     });
   });
 }

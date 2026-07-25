@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const AdmZip = require('adm-zip');
 const db = require('../db/database');
 const { authenticateToken } = require('../auth');
+const { migratePack } = require('../game/packMigrate');
 
 const router = express.Router();
 router.use(express.json({ limit: '25mb' })); // база64 медиа при загрузке/импорте
@@ -93,19 +94,19 @@ router.get('/played', (req, res) => {
   );
 });
 
-// Полный пак
+// Полный пак (легаси-типы мигрируются на лету — редактор всегда видит новый формат)
 router.get('/:id', (req, res) => {
   db.get('SELECT * FROM packs WHERE id = ? AND owner_id = ?', [req.params.id, req.user.platformId], (err, row) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     if (!row) return res.status(404).json({ error: 'Pack not found' });
-    res.json({ ...rowToMeta(row), data: JSON.parse(row.data) });
+    res.json({ ...rowToMeta(row), data: migratePack(JSON.parse(row.data)) });
   });
 });
 
 // Создать
 router.post('/', (req, res) => {
   const name = (req.body?.name || '').toString().slice(0, 120) || 'Без названия';
-  const data = req.body?.data || { rounds: [] };
+  const data = migratePack(req.body?.data || { rounds: [] });
   const id = genId();
   const now = Date.now();
   db.run('INSERT INTO packs (id, owner_id, name, data, created_at, touched_at) VALUES (?, ?, ?, ?, ?, ?)',
@@ -122,7 +123,7 @@ router.put('/:id', (req, res) => {
     if (err) return res.status(500).json({ error: 'DB error' });
     if (!row) return res.status(404).json({ error: 'Pack not found' });
     const name = (req.body?.name || 'Без названия').toString().slice(0, 120);
-    const data = req.body?.data || { rounds: [] };
+    const data = migratePack(req.body?.data || { rounds: [] });
     db.run('UPDATE packs SET name = ?, data = ?, touched_at = ? WHERE id = ?', [name, JSON.stringify(data), Date.now(), req.params.id],
       (e2) => e2 ? res.status(500).json({ error: 'DB error' }) : res.json({ ok: true }));
   });
@@ -234,7 +235,8 @@ router.post('/import', (req, res) => {
     if (!manifest) return res.status(400).json({ error: 'В архиве нет pack.json' });
     const parsed = JSON.parse(zip.readAsText(manifest));
     const newId = genId();
-    const data = fromPortable(parsed.data || { rounds: [] }, newId);
+    // Старые ZIP несут легаси-типы — мигрируем при импорте (fromPortable типов не касается)
+    const data = migratePack(fromPortable(parsed.data || { rounds: [] }, newId));
     // Распаковываем медиа
     fs.mkdirSync(packDir(newId), { recursive: true });
     zip.getEntries().forEach(e => {

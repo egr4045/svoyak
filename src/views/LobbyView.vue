@@ -39,7 +39,8 @@
                 <span class="font-medium" :class="{ 'text-hub-muted': !p.connected }">{{ p.name }}</span>
                 <span v-if="voiceOf(p)" class="text-xs" :title="voiceOf(p).micOn ? 'В голосовом чате' : 'Микрофон выключен'">{{ voiceOf(p).micOn ? '🎙' : '🔇' }}</span>
               </div>
-              <div class="text-sm">
+              <div class="text-sm flex items-center gap-2">
+                <span v-if="p.failedAssets" class="text-hub-warning" :title="`Не загрузилось файлов: ${p.failedAssets}`">⚠ {{ p.failedAssets }}</span>
                 <span v-if="!p.loadedAssets" class="text-hub-warning animate-pulse">Загрузка…</span>
                 <span v-else class="text-hub-positive font-bold">Готов</span>
               </div>
@@ -109,6 +110,7 @@
               <div class="bg-hub-accent h-3 transition-all duration-300" :style="{ width: loadProgress + '%' }"></div>
             </div>
             <p v-if="!myAssetsLoaded" class="text-sm text-hub-muted">Загрузка ресурсов игры… {{ loadProgress }}%</p>
+            <p v-else-if="failedAssets" class="text-sm text-hub-warning font-bold">⚠ {{ failedAssets }} файл(ов) не загрузилось — часть медиа может не сыграть</p>
             <p v-else class="text-sm text-hub-positive font-bold">Ресурсы загружены</p>
           </div>
 
@@ -169,6 +171,7 @@ watch(() => store.isSpectator, (isSpec, was) => {
 
 const myAssetsLoaded = ref(false)
 const loadProgress = ref(0)
+const failedAssets = ref(0) // битые/недоступные медиа при прелоаде (⚠ в лобби)
 
 const isHost = computed(() => store.host && store.user && store.host.id === store.user.id)
 const allReady = computed(() => {
@@ -187,7 +190,8 @@ onMounted(() => {
     data.forEach(round => {
       if (round.categories) round.categories.forEach(cat => {
         cat.questions.forEach(q => {
-          [q.mediaSrc, q.answerMediaSrc, q.image, q.media, q.answerMedia].forEach(s => { if (s) mediaUrls.push(store.getAssetUrl(s)) })
+          // Легаси q.image нормализован миграцией в mediaSrc (server/game/packMigrate.js)
+          [q.mediaSrc, q.answerMediaSrc].forEach(s => { if (s) mediaUrls.push(store.getAssetUrl(s)) })
           // Тир-лист: медиа лежит на каждом объекте отдельно, не в q.mediaSrc
           if (Array.isArray(q.items)) q.items.forEach(it => { if (it?.mediaSrc) mediaUrls.push(store.getAssetUrl(it.mediaSrc)) })
         })
@@ -196,9 +200,11 @@ onMounted(() => {
     const uniqueUrls = [...new Set(mediaUrls.filter(Boolean))]
     if (uniqueUrls.length === 0) {
       loadProgress.value = 100; myAssetsLoaded.value = true
-      if (store.socket) store.socket.emit('player:loaded')
+      if (store.socket) store.socket.emit('player:loaded', { failedCount: 0 })
       return
     }
+    // Битые файлы считаем честно (отдельный счётчик), но лобби не деддочим:
+    // игра стартует, игрок и ведущий видят ⚠ N — знают, что часть медиа не сыграет
     let loaded = 0
     const promises = uniqueUrls.map(url => new Promise((resolve) => {
       const isVideo = url.endsWith('.mp4') || url.endsWith('.webm')
@@ -207,15 +213,20 @@ onMounted(() => {
       if (isVideo) el = document.createElement('video')
       else if (isAudio) el = document.createElement('audio')
       else el = new Image()
-      const finish = () => { loaded++; loadProgress.value = Math.floor((loaded / uniqueUrls.length) * 100); resolve() }
-      el.onloadeddata = finish; el.onload = finish; el.onerror = finish
+      const finish = (failed) => () => {
+        loaded++
+        if (failed) failedAssets.value++
+        loadProgress.value = Math.floor((loaded / uniqueUrls.length) * 100)
+        resolve()
+      }
+      el.onloadeddata = finish(false); el.onload = finish(false); el.onerror = finish(true)
       if (isVideo || isAudio) el.preload = 'auto'
       el.src = url
-      if (el instanceof Image && el.complete) finish()
+      if (el instanceof Image && el.complete) finish(false)()
     }))
     await Promise.all(promises)
     myAssetsLoaded.value = true
-    if (store.socket) store.socket.emit('player:loaded')
+    if (store.socket) store.socket.emit('player:loaded', { failedCount: failedAssets.value })
   }, { immediate: true, deep: true })
 })
 

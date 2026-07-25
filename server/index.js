@@ -8,6 +8,8 @@ const { authRouter, JWT_SECRET, authenticateToken } = require('./auth');
 const roomManager = require('./managers/RoomManager');
 const handleRoomEvents = require('./handlers/roomHandlers');
 const { packsRouter, loadPackForRoom, MEDIA_ROOT } = require('./routes/packs');
+const db = require('./db/database');
+const { migratePack } = require('./game/packMigrate');
 
 const path = require('path');
 const app = express();
@@ -104,6 +106,29 @@ app.get(/.*/, (req, res) => {
     }
   });
 });
+
+// Разовый свип БД на старте: домигрировать паки со старыми типами (text/cat/karaoke/…)
+// в новый формат. Рантайм-миграция на входах остаётся (старые ZIP живут у людей вечно),
+// свип лишь убирает длинный хвост легаси-данных в хранилище.
+function migrateStoredPacks() {
+  db.all('SELECT id, data FROM packs', [], (err, rows) => {
+    if (err || !rows?.length) return;
+    let migrated = 0;
+    rows.forEach(r => {
+      try {
+        const before = JSON.parse(r.data);
+        const after = migratePack(before);
+        const afterStr = JSON.stringify(after);
+        if (afterStr !== JSON.stringify(before)) {
+          db.run('UPDATE packs SET data = ? WHERE id = ?', [afterStr, r.id]);
+          migrated++;
+        }
+      } catch { /* битый JSON не трогаем */ }
+    });
+    if (migrated) console.log(`[migrate] Packs upgraded to new type model: ${migrated}`);
+  });
+}
+migrateStoredPacks();
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {

@@ -11,7 +11,6 @@ function applyIdentity(patch, role, ps) {
     case 'holder': me = ps.find(p => p.id === patch.potatoTurnId) || ps[0]; break
     case 'duelistA': me = ps.find(p => p.id === (patch.duelState && patch.duelState.aId)) || ps[0]; break
     case 'answering': me = ps.find(p => p.id === patch.answeringPlayerId) || ps[0]; break
-    case 'pokerActive': me = ps.find(p => (patch.pokerActivePlayers || []).includes(p.id)) || ps[0]; break
     case 'spectator': me = other; break
     case 'player':
     default: {
@@ -37,17 +36,23 @@ function applyIdentity(patch, role, ps) {
   // чтобы его не было даже в скрытом DOM превью
   if (!canSee) {
     const q0 = patch.board && patch.board[0] && patch.board[0].questions && patch.board[0].questions[0]
-    const fields = SECRET_FIELDS[q0 && q0.type]
+    const fields = q0 && secretFieldsFor(q0)
     if (q0 && fields) fields.forEach(f => { q0[f] = null })
   }
 }
 
-const SECRET_FIELDS = { charades: ['a'], karaoke: ['a', 'mediaSrc', 'mediaType'], alias: ['words'] }
+// Зеркалит серверный ShowHandler.secretFields(): секретоносный тип — только «шоу»
+function secretFieldsFor(q) {
+  if (q.type !== 'show') return null
+  if (q.showMode === 'karaoke') return ['a', 'mediaSrc', 'mediaType']
+  if (q.showMode === 'alias') return ['words']
+  return ['a']
+}
 
 // Собираем patch для мок-стора: каркас + активный вопрос + фаза + роль-сид.
 export function makeMockState(question, { role = 'host', phaseIndex = 0, players = 3 } = {}) {
-  const q = JSON.parse(JSON.stringify(question || { type: 'text' }))
-  const cfg = typeConfig(q.type)
+  const q = JSON.parse(JSON.stringify(question || { type: 'quiz' }))
+  const cfg = typeConfig(q)
   const ps = fakePlayers(players)
   const phase = cfg.phases[Math.max(0, Math.min(phaseIndex, cfg.phases.length - 1))]
 
@@ -74,6 +79,6 @@ export function makeMockState(question, { role = 'host', phaseIndex = 0, players
   return patch
 }
 
-// Роли и фазы, актуальные для типа (для UI переключателей)
-export function rolesFor(type) { return typeConfig(type).roles }
-export function phasesFor(type) { return typeConfig(type).phases }
+// Роли и фазы, актуальные для вопроса (тип + модификаторы) — для UI переключателей
+export function rolesFor(question) { return typeConfig(question).roles }
+export function phasesFor(question) { return typeConfig(question).phases }

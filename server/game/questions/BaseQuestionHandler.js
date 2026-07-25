@@ -48,7 +48,7 @@ class BaseQuestionHandler {
     gameState.state.showAnswer = true;
     gameState.state.questionStatus = 'idle';
     
-    io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+    gameState.broadcast(io);
   }
 
   /**
@@ -69,7 +69,7 @@ class BaseQuestionHandler {
       this.restartBuzzer(gameState, io);
     }
     
-    io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+    gameState.broadcast(io);
   }
 
   /**
@@ -78,14 +78,14 @@ class BaseQuestionHandler {
   restartBuzzer(gameState, io) {
     gameState.clearTimers();
     gameState.state.questionStatus = 'buzzer_countdown';
-    io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+    gameState.broadcast(io);
 
     gameState.timers.buzzerStart = setTimeout(() => {
       gameState.state.questionStatus = 'buzzer_active';
       gameState.state.buzzerReceiving = true;
       gameState.state.buzzerResults = [];
       delete gameState.timers.buzzerFirstHit;
-      io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+      gameState.broadcast(io);
     }, 3000);
   }
 }

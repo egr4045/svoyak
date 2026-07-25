@@ -37,7 +37,7 @@ class PotatoHandler extends BaseQuestionHandler {
     gameState.state.questionStatus = 'idle';
     const name = gameState.state.players.find(p => p.id === loserId)?.name;
     gameState.addLog(`💥 Взорвалась у ${name || '—'}! −${q.points}.`, 'error');
-    io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+    gameState.broadcast(io);
   }
 
   handleAction(gameState, action, data, { io, user }) {
@@ -48,7 +48,7 @@ class PotatoHandler extends BaseQuestionHandler {
       if (!ring.length) return;
       const idx = ring.findIndex(id => String(id) === String(user.id));
       gameState.state.potatoTurnId = ring[(idx + 1) % ring.length];
-      io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+      gameState.broadcast(io);
     }
   }
 }

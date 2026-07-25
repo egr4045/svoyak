@@ -113,13 +113,13 @@ class ReactionHandler extends BaseQuestionHandler {
         gameState.sealed[String(user.id)] = true; // блок до конца
         gameState.adjustScore(user.id, -Math.max(1, Math.round((q.points || 0) / 2)));
       }
-      io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+      gameState.broadcast(io);
     } else if (action === 'host:endReaction') {
       if (gameState.state.questionStatus !== 'reaction_active') return;
       gameState.state.reactionDone = true;
       const a = gameState._priv.reactionAnswer;
       if (gameState.state.reactionGrid[a]) gameState.state.reactionGrid[a].correct = true;
-      io.to(gameState.roomCode).emit('gameStateUpdated', gameState.state);
+      gameState.broadcast(io);
     }
   }
 }

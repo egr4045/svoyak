@@ -1,9 +1,48 @@
 @import "tailwindcss";
 
-/* Дизайн-язык платформы MyGame Hub (D:\dev\mygame\packages\ui-kit\src\tokens.ts):
-   тёмные полупрозрачные стеклянные панели над почти чёрным фоном.
-   Акцент Свояка — зелёный #49a05a (из реестра хаба, эмодзи 🧠). */
+/* ============================================================================
+   Svoyak · дизайн-система «Неон-вечеринка»
+   База — тёмный glass-язык платформы MyGame Hub (совместимость с хабом),
+   поверх — неон-акценты игровых моментов, моушен-токены и keyframes.
+   Роли неона: баззер = розовый, ставка = янтарь, победа = лайм, медиа = циан.
+   ========================================================================== */
+
+/* --- Шрифты: self-hosted variable woff2 (кириллица + латиница) ------------- */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-var-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./fonts/inter-var-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212;
+}
+@font-face {
+  font-family: 'Unbounded';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('./fonts/unbounded-var-cyrillic.woff2') format('woff2');
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: 'Unbounded';
+  font-style: normal;
+  font-weight: 200 900;
+  font-display: swap;
+  src: url('./fonts/unbounded-var-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2212;
+}
+
 @theme {
+  /* Токены хаба (не менять — визуальное родство с платформой) */
   --color-hub-panel: rgba(14, 20, 30, 0.82);
   --color-hub-solid: #0e141e;
   --color-hub-deep: #0a0f16;
@@ -16,7 +55,16 @@
   --color-hub-positive: #46c46a;
   --color-hub-negative: #e0524a;
   --color-hub-warning: #e8a13a;
+
+  /* Неон вечеринки: цвета игровых моментов */
+  --color-party-pink: #ff4fa3;
+  --color-party-violet: #8b5cf6;
+  --color-party-cyan: #22d3ee;
+  --color-party-lime: #a3e635;
+  --color-party-amber: #fbbf24;
+
   --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Unbounded', 'Inter', system-ui, sans-serif;
 }
 
 /* CSS-переменные для произвольных значений и хелперов */
@@ -31,17 +79,32 @@
   --c-accent: #49a05a;
   --c-accent-deep: #3a8049;
   --c-overlay: rgba(0, 0, 0, 0.65);
+  --c-pink: #ff4fa3;
+  --c-violet: #8b5cf6;
+  --c-cyan: #22d3ee;
+  --c-lime: #a3e635;
+  --c-amber: #fbbf24;
+
+  /* Моушен-токены: длительности и изинги */
+  --dur-quick: 120ms;
+  --dur-snap: 200ms;
+  --dur-pop: 350ms;
+  --dur-drama: 700ms;
+  --ease-pop: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
 }
 
 body {
   @apply text-hub-text font-sans;
   background: radial-gradient(ellipse at top, #0e141e 0%, #05080d 60%, #000 100%);
   margin: 0;
+  /* dvh: мобильные тулбары не режут низ (100vh на телефонах врёт) */
   height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
-/* Стеклянная панель — фирменная поверхность хаба */
+/* --- Фирменные поверхности хаба ------------------------------------------- */
 .panel-glass {
   background: var(--c-panel);
   border: 1px solid var(--c-border);
@@ -60,7 +123,7 @@ body {
   padding: 8px 14px;
   font-weight: 600;
   color: var(--c-text);
-  transition: border-color .12s ease-out, background .12s ease-out;
+  transition: border-color var(--dur-quick) ease-out, background var(--dur-quick) ease-out;
 }
 .hub-btn:hover { border-color: var(--c-accent); }
 .hub-btn-primary {
@@ -70,7 +133,7 @@ body {
   padding: 10px 18px;
   font-weight: 800;
   color: #fff;
-  transition: background .12s ease-out, transform .12s ease-out;
+  transition: background var(--dur-quick) ease-out, transform var(--dur-quick) ease-out;
 }
 .hub-btn-primary:hover { background: var(--c-accent-deep); }
 .hub-btn-primary:active { transform: scale(.98); }
@@ -81,6 +144,119 @@ body {
   color: var(--c-text);
   padding: 10px 12px;
   outline: none;
-  transition: border-color .12s ease-out;
+  transition: border-color var(--dur-quick) ease-out;
 }
 .hub-input:focus { border-color: var(--c-accent); }
+
+/* --- Неон: заголовки, градиенты, глоу ------------------------------------- */
+.font-display { font-family: var(--font-display); }
+
+.text-party-gradient {
+  background: linear-gradient(100deg, var(--c-violet) 0%, var(--c-pink) 50%, var(--c-cyan) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.bg-party-gradient {
+  background: linear-gradient(120deg, var(--c-violet), var(--c-pink), var(--c-cyan));
+}
+
+.glow-accent { box-shadow: 0 0 12px color-mix(in srgb, var(--c-accent) 45%, transparent), 0 0 32px color-mix(in srgb, var(--c-accent) 25%, transparent); }
+.glow-pink   { box-shadow: 0 0 12px color-mix(in srgb, var(--c-pink) 45%, transparent),   0 0 32px color-mix(in srgb, var(--c-pink) 25%, transparent); }
+.glow-cyan   { box-shadow: 0 0 12px color-mix(in srgb, var(--c-cyan) 45%, transparent),   0 0 32px color-mix(in srgb, var(--c-cyan) 25%, transparent); }
+.glow-amber  { box-shadow: 0 0 12px color-mix(in srgb, var(--c-amber) 45%, transparent),  0 0 32px color-mix(in srgb, var(--c-amber) 25%, transparent); }
+.text-glow-accent { text-shadow: 0 0 14px color-mix(in srgb, var(--c-accent) 55%, transparent); }
+.text-glow-pink   { text-shadow: 0 0 14px color-mix(in srgb, var(--c-pink) 55%, transparent); }
+.text-glow-amber  { text-shadow: 0 0 14px color-mix(in srgb, var(--c-amber) 55%, transparent); }
+
+/* --- Keyframes (только opacity/transform — дружелюбно к компоузеру) -------- */
+@keyframes kf-pop-in {
+  0% { opacity: 0; transform: scale(.85) translateY(8px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+@keyframes kf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes kf-rise-in {
+  0% { opacity: 0; transform: translateY(24px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes kf-shake {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-10px, 2px); }
+  40% { transform: translate(9px, -3px); }
+  60% { transform: translate(-7px, 1px); }
+  80% { transform: translate(6px, -2px); }
+}
+@keyframes kf-glitch-jitter {
+  0% { transform: translate(0); filter: none; }
+  15% { transform: translate(-4px, 2px) skewX(4deg); filter: hue-rotate(90deg) saturate(3); }
+  30% { transform: translate(4px, -2px) skewX(-3deg); filter: invert(0.15); }
+  45% { transform: translate(-3px, -2px); filter: hue-rotate(-60deg); }
+  60% { transform: translate(3px, 2px) skewX(2deg); filter: saturate(4) contrast(1.4); }
+  75% { transform: translate(-2px, 1px); filter: invert(0.08); }
+  100% { transform: translate(0); filter: none; }
+}
+/* Пульс глоу без анимации box-shadow: мигаем opacity псевдоэлемента-подложки */
+@keyframes kf-pulse-opacity {
+  0%, 100% { opacity: .35; }
+  50% { opacity: 1; }
+}
+@keyframes kf-score-bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+@keyframes kf-float-up {
+  0% { opacity: 0; transform: translateY(4px); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-34px); }
+}
+@keyframes kf-cell-vanish {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(.6) rotate(3deg); }
+}
+@keyframes kf-blob-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(6vw, -4vh) scale(1.15); }
+  66% { transform: translate(-5vw, 5vh) scale(.9); }
+}
+@keyframes kf-countdown-pop {
+  0% { opacity: 0; transform: scale(1.8); }
+  25% { opacity: 1; transform: scale(1); }
+  85% { opacity: 1; transform: scale(.94); }
+  100% { opacity: 0; transform: scale(.85); }
+}
+
+/* Утилиты-анимации */
+.anim-pop-in { animation: kf-pop-in var(--dur-pop) var(--ease-pop) both; }
+.anim-fade-in { animation: kf-fade-in var(--dur-snap) ease-out both; }
+.anim-rise-in { animation: kf-rise-in var(--dur-pop) var(--ease-out) both; }
+.anim-shake { animation: kf-shake 400ms ease-in-out; }
+.anim-glitch { animation: kf-glitch-jitter 1.5s steps(12) both; }
+.anim-score-bump { animation: kf-score-bump 450ms var(--ease-pop); }
+.anim-cell-vanish { animation: kf-cell-vanish var(--dur-pop) ease-in both; }
+.anim-countdown { animation: kf-countdown-pop 1s var(--ease-out) both; }
+/* Стаггер для списков: задаётся style="--stagger: N" */
+.anim-stagger { animation-delay: calc(var(--stagger, 0) * 70ms); }
+
+/* --- Vue <Transition> классы (были no-op — теперь работают) ---------------- */
+.slide-up-enter-active, .slide-up-leave-active { transition: opacity var(--dur-pop) var(--ease-out), transform var(--dur-pop) var(--ease-out); }
+.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(18px); }
+
+.fade-enter-active, .fade-leave-active { transition: opacity var(--dur-snap) ease-out; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+.pop-enter-active { transition: opacity var(--dur-pop) var(--ease-pop), transform var(--dur-pop) var(--ease-pop); }
+.pop-leave-active { transition: opacity var(--dur-snap) ease-in, transform var(--dur-snap) ease-in; }
+.pop-enter-from, .pop-leave-to { opacity: 0; transform: scale(.9); }
+
+/* --- Доступность: глобальный стоп-кран моушена ----------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
