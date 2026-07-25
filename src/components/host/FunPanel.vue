@@ -10,6 +10,19 @@
         </button>
       </div>
 
+      <!-- Режиссура голоса: всегда на виду, это не «прикол», а рабочий инструмент ведущего -->
+      <div class="mb-3 pb-3 border-b border-hub-border">
+        <p class="text-[10px] uppercase tracking-widest text-hub-muted font-black mb-1.5">🎙 Кто говорит</p>
+        <div class="flex gap-1">
+          <button v-for="m in VOICE_MODES" :key="m.key" @click="setVoiceMode(m.key)"
+                  class="hub-btn text-[11px] flex-1 py-2" :title="m.hint"
+                  :class="store.voiceMode === m.key ? '!border-hub-accent !text-hub-accent' : ''">
+            {{ m.label }}
+          </button>
+        </div>
+        <p class="text-[10px] text-hub-muted mt-1.5 leading-snug">{{ voiceHint }}</p>
+      </div>
+
       <!-- Саундборд -->
       <div v-if="tab === 'sound'" class="grid grid-cols-2 gap-1.5">
         <button v-for="s in SOUNDS" :key="s.key" @click="playSound(s.key)"
@@ -71,6 +84,16 @@ const SOUNDS = [
   { key: 'quack', icon: '🦆', label: 'Кряк' },
   { key: 'applause', icon: '👏', label: 'Овации' },
 ]
+
+// Режимы голоса. Глушение — самоглушение клиентов (SDK не умеет принудительный мьют),
+// поэтому в подсказке честно: игрок может включиться обратно.
+const VOICE_MODES = [
+  { key: 'auto', label: '🎯 По игре', hint: 'Во время ответа молчат все, кроме отвечающего' },
+  { key: 'open', label: '🔊 Все', hint: 'Говорят все и всегда' },
+  { key: 'silent', label: '🤫 Тишина', hint: 'Говорит только ведущий' },
+]
+const voiceHint = computed(() => VOICE_MODES.find(m => m.key === store.voiceMode)?.hint || '')
+function setVoiceMode(mode) { store.emitAction('host:setVoiceMode', mode) }
 
 function playSound(sound) { store.emitAction('host:playSound', { sound }) }
 function triggerEffect(effect, targetId = null) { store.emitAction('host:triggerEffect', { effect, targetId }) }

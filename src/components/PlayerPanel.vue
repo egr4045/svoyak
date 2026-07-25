@@ -32,16 +32,18 @@
         <div class="border-2 rounded-2xl p-1.5 md:p-2 flex flex-col items-center shadow-2xl relative transition-all player-card"
              :class="store.answeringPlayerId === player.id ? 'border-hub-accent glow-accent' : 'border-hub-border'">
 
-          <!-- Аватар + живая камера из звонка -->
+          <!-- Тайл: живая камера — основа, аватар под ней как фолбэк (просвечивает, когда камеры нет).
+               PlayerVideo держим смонтированным всегда: SDK сам вешает/снимает <video> по треку,
+               а v-if на camOn давал лишний attach/detach на каждое мигание камеры. -->
           <div class="avatar-box bg-hub-deep rounded-xl mb-1 flex items-center justify-center relative overflow-hidden transition-all"
                :class="voiceOf(player)?.speaking ? 'ring-2 ring-hub-accent' : 'ring-1 ring-hub-border'">
              <img v-if="player.avatar && store.avatarIsImage(player.avatar)" :src="store.getAvatarUrl(player.avatar)" class="w-full h-full object-cover">
              <span v-else-if="player.avatar" class="avatar-emoji">{{ player.avatar }}</span>
              <MonitorPlay v-else class="w-6 h-6 text-hub-border" />
-             <PlayerVideo v-if="player.platformId && voiceOf(player)?.camOn" :account-id="player.platformId" />
+             <PlayerVideo v-if="player.platformId" :account-id="player.platformId" />
              <div v-if="voiceOf(player) && !voiceOf(player).micOn" class="absolute bottom-0.5 right-0.5 z-20 text-[10px] bg-hub-deep/80 rounded px-0.5" title="Микрофон выключен">🔇</div>
              <div v-if="!player.connected" class="absolute inset-0 z-20 bg-black/60 flex items-center justify-center text-xl" title="Отключился">🔌</div>
-             <div v-if="store.answeringPlayerId === player.id" class="absolute inset-0 bg-gradient-to-t from-hub-accent/30 to-transparent"></div>
+             <div v-if="String(store.answeringPlayerId) === String(player.id)" class="absolute inset-0 z-20 bg-gradient-to-t from-hub-accent/30 to-transparent pointer-events-none"></div>
           </div>
 
           <!-- Текст -->

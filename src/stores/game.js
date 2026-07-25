@@ -29,7 +29,7 @@ const BROADCAST_KEYS = [
   'selectingPlayerId', 'highlightedQuestion', 'failedPlayers', 'activeBet', 'glitchSeed',
   'textAnswers', 'sketchAnswers', 'sketchVotes', 'imposterId', 'amongUsTimerState',
   'amongUsResult', 'amongUsVotes', 'mediaState', 'revealedTextAnswers', 'auctionBets',
-  'catTargetId', 'auctionTiePlayers', 'eventLog', 'buzzerResults'
+  'catTargetId', 'auctionTiePlayers', 'eventLog', 'buzzerResults', 'voiceMode'
 ]
 
 export const useGameStore = defineStore('game', {
@@ -81,6 +81,7 @@ export const useGameStore = defineStore('game', {
     auctionTiePlayers: [],
     eventLog: [],
     buzzerResults: [],
+    voiceMode: 'auto', // режиссура голоса: 'auto' | 'open' | 'silent' (см. server/game/GameState.js)
     // Синхронизация медиа: оценка дельты часов клиент↔сервер (sync:ping).
     // Активный медиаэлемент живёт вне стора — см. src/lib/mediaBus.js
     serverTimeDelta: 0,

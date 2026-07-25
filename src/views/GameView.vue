@@ -44,6 +44,7 @@
     <VoiceBar />
     <FunPanel />
     <EffectsOverlay />
+    <Spotlight />
 
     <!-- Гард соединения: свой сокет отвалился -->
     <div v-if="!store.connected" class="fixed inset-0 z-[120] bg-black/80 flex flex-col items-center justify-center gap-4 anim-fade-in">
@@ -77,6 +78,8 @@ import EventLog from '../components/EventLog.vue'
 import VoiceBar from '../components/VoiceBar.vue'
 import FunPanel from '../components/host/FunPanel.vue'
 import EffectsOverlay from '../components/EffectsOverlay.vue'
+import Spotlight from '../components/Spotlight.vue'
+import { useVoiceFloor } from '../composables/useVoiceFloor'
 
 const store = useGameStore()
 const platform = usePlatformStore()
@@ -121,6 +124,9 @@ watch(() => store.isSpectator, (isSpec, was) => {
 
 // Опоздавшие в звонок подхватываются и в середине игры
 useCallInvite(store, platform, isHost)
+
+// Режиссура голоса: в фазе ответа все, кроме отвечающего, глушат себе микрофон (режим задаёт ведущий)
+useVoiceFloor(store, platform, isHost)
 
 function leaveRoom() {
   store.logout();
