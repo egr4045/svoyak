@@ -45,6 +45,7 @@ class QuizHandler extends BaseQuestionHandler {
       gameState.state.glitchSeed = Math.floor(Math.random() * 1000000);
       gameState.state.buzzerReceiving = true;
       gameState.state.buzzerResults = [];
+      gameState.state.buzzerOpenedAt = Date.now();
       gameState.addLog(`Активирован Glitch-вопрос!`, 'warning');
       return;
     }
@@ -52,6 +53,7 @@ class QuizHandler extends BaseQuestionHandler {
       gameState.state.questionStatus = 'buzzer_active';
       gameState.state.buzzerReceiving = true;
       gameState.state.buzzerResults = [];
+      gameState.state.buzzerOpenedAt = Date.now();
       gameState.addLog(`Активирован медиа-вопрос! Баззер включен.`, 'info');
       return;
     }

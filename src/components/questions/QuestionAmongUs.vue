@@ -1,6 +1,30 @@
 <template>
   <div class="flex-1 flex flex-col items-center">
+    <!-- Фаза ответов/проверки: вопрос видят все, КРОМЕ шпиона (механика «Хамелеона») -->
+    <div v-if="store.questionStatus === 'text_inputting' || store.questionStatus === 'text_judging'" class="w-full max-w-3xl mx-auto mb-4">
+      <!-- Я — шпион -->
+      <div v-if="amImposter" class="bg-hub-negative/10 border-2 border-hub-negative/50 rounded-2xl p-5 text-center anim-pop-in">
+        <p class="text-3xl mb-1">🕵️</p>
+        <p class="text-xl font-black text-hub-negative mb-1">ВЫ — ШПИОН!</p>
+        <p class="text-sm text-hub-text">Вопрос вам не показан. Подслушивайте, смотрите на реакции и напишите <b>правдоподобный</b> ответ, чтобы слиться с толпой.</p>
+      </div>
+      <!-- Мирные (и ведущий) -->
+      <template v-else>
+        <h3 class="text-xl md:text-3xl font-black text-hub-text text-center mb-2">{{ store.currentQuestion.q }}</h3>
+        <p class="text-xs text-hub-muted text-center">🕵️ Среди вас шпион — он <b>не видит</b> вопрос. Отвечайте честно, потом вычислите блефующего.</p>
+        <p v-if="isHost && hostReveal" class="text-xs text-center mt-1 text-hub-warning">👁 Для ведущего: шпион — <b>{{ hostReveal.imposterName }}</b></p>
+      </template>
+    </div>
+
     <div v-if="store.questionStatus === 'among_us_voting'" class="w-full max-w-4xl mx-auto space-y-6 mb-8">
+      <!-- Инструкция + ставки голосования -->
+      <div class="text-center">
+        <p class="text-lg font-black text-hub-text">Кто блефовал? Голосуйте!</p>
+        <p class="text-xs text-hub-muted mt-1">
+          Толпа угадала: голосовавшим верно <b class="text-party-lime">+{{ pts }}</b>, шпиону <b class="text-hub-negative">−{{ pts * 2 }}</b> ·
+          Не угадала: шпиону <b class="text-party-lime">+{{ pts * 2 }}</b>, остальным <b class="text-hub-negative">−{{ pts }}</b>
+        </p>
+      </div>
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         <div v-for="player in store.players" :key="player.id" 
              @click="vote(player.id)"
@@ -29,10 +53,7 @@
          <div class="text-4xl font-mono font-black" :class="displayTimeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-slate-200'">
             {{ formatTime(displayTimeLeft) }}
          </div>
-         <div v-if="isHost" class="flex gap-4">
-            <button v-if="store.amongUsTimerState.status === 'running'" @click="emit('pauseTimer', store.amongUsTimerState.timeLeft)" class="px-4 py-2 rounded-xl bg-amber-500/20 text-amber-500 border border-amber-500/30 text-xs font-black">ПАУЗА</button>
-            <button v-else @click="emit('resumeTimer', store.amongUsTimerState.timeLeft)" class="px-4 py-2 rounded-xl bg-emerald-500/20 text-emerald-500 border border-emerald-500/30 text-xs font-black">ПРОДОЛЖИТЬ</button>
-         </div>
+         <!-- Пауза/продолжение — на пульте ведущего внизу (единое место управления) -->
       </div>
     </div>
   </div>
@@ -43,8 +64,13 @@ import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '../../stores/game'
 
 const store = useGameStore()
-const emit = defineEmits(['vote', 'pauseTimer', 'resumeTimer'])
-const isHost = computed(() => store.host?.id === store.user?.id)
+const emit = defineEmits(['vote'])
+const isHost = computed(() => String(store.host?.id) === String(store.user?.id))
+const pts = computed(() => store.currentQuestion?.points || 0)
+
+// Приватная роль из privateReveal (вне broadcast): шпион узнаёт себя, ведущий — имя шпиона
+const amImposter = computed(() => !isHost.value && store.privateReveal?.kind === 'imposter')
+const hostReveal = computed(() => store.privateReveal?.kind === 'imposter_host' ? store.privateReveal : null)
 
 // Живой отсчёт: пока таймер «running», считаем остаток от endsAt (сервер тикает не сам);
 // на паузе показываем сохранённый timeLeft

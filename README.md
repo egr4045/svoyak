@@ -41,11 +41,41 @@
 участников встраиваются прямо в карточки игроков (`attachVideo`), есть индикатор «кто говорит»,
 локальный мьют и громкость на игрока. Друзей зовут через встроенный виджет друзей SDK.
 
-### Типы вопросов
-`text` (баззер) · `media` (фото/аудио/видео) · `text_input` (письменный ответ) · `glitch` ·
-`cat` (Кот в мешке, рулетка) · `among_us` (скрытый шпион + голосование) · `poker` · `auction`
-(аукцион вслепую) · `sketch` (рисование + голосование). Логика каждого типа — в
-`server/game/questions/*Handler.js` (реестр в `GameState.js`), UI перехода по этапам — в `HostPanel`.
+### Типы вопросов: 8 ядра + модификаторы
+
+| Тип | Механика | Особенности задаются |
+|---|---|---|
+| `quiz` | Вопрос-ответ (баззер/письменно) | `answerMode: 'buzzer'\|'written'` · `glitch: true` (глитч-текст, первый нажавший отвечает) · `snippet: true` (фрагмент, «открыть больше» снижает цену) · `stake: 'none'\|'auction'\|'cat'` (торги вслепую / рулетка-жертва) · медиа — просто `mediaType`+`mediaSrc` |
+| `show` | Один исполняет — остальные угадывают | `showMode: 'charades'\|'karaoke'\|'alias'`; секрет (слово/реф-аудио/список слов) уходит приватным `privateReveal` |
+| `everyone` | Все сдают одновременно (sealed) | `everyoneMode: 'number'\|'tierlist'\|'whosaid'` |
+| `sketch` | Все рисуют, голосование за лучший | — |
+| `among_us` | «Шпион» (механика Хамелеона): все видят вопрос, кроме шпиона — он блефует; обсуждение и голосование | id шпиона вне broadcast до вскрытия |
+| `potato` | Горячая картошка со скрытым таймером | — |
+| `reaction` | Двухфазная реакция: чтение правила → сетка с дедлайном; промахи публичны | контент генерирует движок |
+| `rps` | Камень-ножницы: тайная дуэль двух игроков | — |
+
+Логика — в `server/game/questions/*Handler.js` (реестр в `GameState.js`), UI перехода по
+этапам — в `HostPanel` (ключуется на `questionStatus`, не на типе).
+
+**Миграция легаси-паков.** Старые id (`text`, `media`, `text_input`, `glitch`, `snippet`,
+`auction`, `cat`, `poker`→quiz+auction, `charades`, `karaoke`, `alias`, `number`, `tierlist`,
+`whosaid`) автоматически и навсегда конвертируются в новую модель слоем
+`server/game/packMigrate.js` на каждом входе данных: создание комнаты, GET/PUT пака,
+импорт ZIP, разовый свип БД при старте сервера. Старые ZIP-экспорты играются без правок.
+
+### Приколы ведущего и финал
+Плавающий пульт 🎉 (`FunPanel`): **саундборд** (фанфары/дробь/тромбон/кряк/овации на всех),
+**эффекты** (конфетти, тряска, адресный «глитч экрана» игрока) и **очковая рулетка**
+(подарок/налог/кража/обмен/удвоение/обнуление — исход решает сервер и применяет очки после
+остановки колеса). События `fun:*` транзиентные, с рейт-лимитами (`server/handlers/funTools.js`).
+Финал игры — табло с подиумом, фейерверком и «Сыграть ещё раз» (`FinalScoreboard.vue`).
+
+### Синхронизация медиа
+`host:controlMedia {status, position}` ставит серверный якорь `{anchorPosition, anchorAt}`;
+клиенты считают ожидаемую позицию через дельту часов (`sync:ping`) и сикают к ней
+(`useSyncedMedia`): опоздавшие стартуют с нужного места, дрейф >1.5с корректируется.
+Обычные обновления стейта летят **без пака** (слим-бродкаст, `roundsData` — только при
+`room:join` и `resetGame`).
 
 ### Кабинет ведущего и конструктор паков (`/host`)
 - **Создать игру** — выбор пака (встроенный или свой) + число мест.
@@ -53,10 +83,16 @@
   загрузка медиа. Паки хранятся на сервере **30 дней**; чтобы не потерять — **экспорт/импорт ZIP**
   (`pack.json` + медиа). Кастомный пак прокидывается в комнату через `packId`.
 
-Схема пака:
+Схема пака (новая модель):
 ```
-{ name, data: { rounds: [ { name, categories: [ { category,
-  questions: [ { points, type, q, a, mediaType?, mediaSrc?, answerMediaType?, answerMediaSrc? } ] } ] } ] } }
+{ name, data: { rounds: [ { name, categories: [ { category, questions: [ {
+  points, type,                       // quiz | show | everyone | sketch | among_us | potato | reaction | rps
+  q?, a?,                             // вопрос/ответ (см. таблицу типов)
+  mediaType?, mediaSrc?,              // медиа quiz / реф-аудио караоке
+  answerMode?, glitch?, snippet?, stake?,   // модификаторы quiz
+  showMode?, words?, timerSec?,             // show (алиас: words+timerSec)
+  everyoneMode?, numberKind?, items?        // everyone
+} ] } ] } ] } }
 ```
 
 ## Структура
@@ -66,15 +102,18 @@ src/
   platform/       мост к платформе: boot.js (SSO/роутинг), sdk.js (window.mygame), contextMenu.js
   stores/         game.js (игровое состояние + сокет), platform.js (мост zustand→Pinia), packs.js
   views/          HomeView (лендинг), HostCabinet (/host), LobbyView, GameView
-  components/      GameBoard, ActiveQuestion, HostPanel, PlayerPanel, PlayerVideo, VoiceBar,
-                  questions/*.vue, pack/PackEditor.vue
-  assets/styles.css   дизайн-токены хаба (@theme) + классы .panel-glass/.hub-btn*
+  components/     GameBoard, ActiveQuestion, HostPanel, PlayerPanel, MediaPlayer, EffectsOverlay,
+                  FinalScoreboard, host/FunPanel, questions/*.vue, pack/PackEditor.vue
+  composables/    useSyncedMedia.js (синхронизированный плеер)
+  lib/            sfx.js (WebAudio-звуки), confetti.js, audioUnlock.js, mediaClock.js, mediaBus.js
+  assets/styles.css   дизайн-система «неон-вечеринка»: токены хаба + party-неон, keyframes,
+                      шрифты Unbounded/Inter (self-hosted, кириллица)
 server/
-  index.js        Express + Socket.io, статик SPA/медиа, гейт platformId
+  index.js        Express + Socket.io, статик SPA/медиа, гейт platformId, бут-свип миграции паков
   auth.js         JWT, /auth/platform-bridge (SSO-мост)
   routes/packs.js CRUD паков, загрузка медиа на диск, экспорт/импорт ZIP, TTL 30 дней
-  game/           GameState.js (state-машина) + questions/*Handler.js
-  handlers/roomHandlers.js   сокет-события (host:* / player:* / room:*)
+  game/           GameState.js (state-машина) + packMigrate.js + questions/*Handler.js
+  handlers/roomHandlers.js   сокет-события (host:* / player:* / room:*), funTools.js (приколы)
   managers/RoomManager.js    комнаты в памяти (4-значный код), уборка пустых
   db/database.js  схема SQLite (users, packs); БД в server/data/svoyak.db
   uploads/packs/  медиа кастомных паков (на диске; отдаётся под /packs-media)

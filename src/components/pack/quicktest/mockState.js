@@ -8,6 +8,7 @@ function applyIdentity(patch, role, ps) {
   switch (role) {
     case 'host': me = HOST; break
     case 'performer': me = ps.find(p => p.id === patch.performerId) || ps[0]; break
+    case 'imposter': me = ps.find(p => p.id === patch._imposterId) || ps[1] || ps[0]; break
     case 'holder': me = ps.find(p => p.id === patch.potatoTurnId) || ps[0]; break
     case 'duelistA': me = ps.find(p => p.id === (patch.duelState && patch.duelState.aId)) || ps[0]; break
     case 'answering': me = ps.find(p => p.id === patch.answeringPlayerId) || ps[0]; break
@@ -27,10 +28,17 @@ function applyIdentity(patch, role, ps) {
     patch.players = ps.filter(p => p.id !== me.id).map(p => ({ ...p }))
   }
 
-  // Секрет виден только ведущему и исполнителю (privateReveal вне broadcast в бою)
-  const canSee = role === 'host' || role === 'performer'
-  patch.privateReveal = canSee ? (patch._secret || null) : null
+  // Секрет виден только ведущему, исполнителю и шпиону (privateReveal вне broadcast в бою)
+  const canSee = role === 'host' || role === 'performer' || role === 'imposter'
+  // Ведущий получает host-вариант секрета (как на сервере: imposter_host с именем шпиона)
+  let secret = patch._secret || null
+  if (secret && secret.kind === 'imposter' && role === 'host') {
+    const imp = ps.find(p => p.id === patch._imposterId)
+    secret = { kind: 'imposter_host', imposterName: imp ? imp.name : '—' }
+  }
+  patch.privateReveal = canSee ? secret : null
   delete patch._secret
+  delete patch._imposterId
 
   // Как сервер (blankActiveQuestionFields): для не-секретных ролей затираем секрет в доске,
   // чтобы его не было даже в скрытом DOM превью

@@ -199,7 +199,8 @@ function handleRoomEvents(io, socket, user) {
         'host:setDuel', 'host:revealDuel',                            // камень-ножницы
         'host:revealMore',                                           // угадай по фрагменту
         'host:revealWhoSaid', 'host:scoreWhoSaid',                  // кто сказал
-        'host:endReaction'                                          // реакция
+        'host:endReaction',                                         // реакция
+        'host:passPotato'                                           // горячая картошка (пасует ведущий)
       ]) {
         socket.on(ev, (data) => room.handleAction(ev, data, { io, socket, user }));
       }
@@ -305,7 +306,6 @@ function handleRoomEvents(io, socket, user) {
       'player:rpsPick',       // камень-ножницы
       'player:submitNumber',  // угадай число
       'player:submitTier',    // тир-лист
-      'player:passPotato',    // горячая картошка
       'player:submitWhoSaid', 'player:guessAuthor', // кто сказал
       'player:tapTarget'      // реакция
     ]) {

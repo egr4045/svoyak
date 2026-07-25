@@ -15,12 +15,21 @@
            {{ isHost ? `Ставки: ${Object.keys(store.auctionBets || {}).length} / ${store.players.length}` : 'Игроки делают ставки… 👁' }}
          </p>
       </div>
-      <div v-else-if="!store.auctionBets[store.user?.id]" class="flex flex-col gap-6">
+      <div v-else-if="!store.auctionBets[store.user?.id]" class="flex flex-col gap-4">
          <div class="relative group">
-            <input type="number" v-model.number="myBet" class="w-full bg-black/40 border-2 border-white/5 rounded-2xl p-6 text-3xl font-black text-center text-amber-400 focus:border-amber-500/50 focus:ring-4 focus:ring-amber-500/10 transition-all outline-none" placeholder="0" />
+            <input type="number" v-model.number="myBet" :min="1" :max="maxBet"
+                   class="w-full bg-black/40 border-2 rounded-2xl p-6 text-3xl font-black text-center text-amber-400 focus:ring-4 focus:ring-amber-500/10 transition-all outline-none"
+                   :class="betValid ? 'border-white/5 focus:border-amber-500/50' : 'border-hub-negative/60'" placeholder="0" />
             <span class="absolute right-6 top-1/2 -translate-y-1/2 text-slate-600 font-black">OЧКОВ</span>
          </div>
-         <button @click="submitBet" class="w-full p-5 rounded-2xl bg-amber-600 border border-amber-400/30 text-white font-black text-lg hover:bg-amber-500 transition-all shadow-xl shadow-amber-600/20 active:scale-95">СДЕЛАТЬ СТАВКУ</button>
+         <!-- Сервер молча отклонял ставку больше баланса — теперь предел виден и кнопка блокируется -->
+         <p class="text-xs text-center" :class="betValid ? 'text-slate-500' : 'text-hub-negative font-bold'">
+           Максимум: <b>{{ maxBet }}</b>{{ betValid ? '' : ' — исправьте ставку' }}
+         </p>
+         <button @click="submitBet" :disabled="!betValid"
+                 class="w-full p-5 rounded-2xl bg-amber-600 border border-amber-400/30 text-white font-black text-lg hover:bg-amber-500 transition-all shadow-xl shadow-amber-600/20 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed">
+           СДЕЛАТЬ СТАВКУ
+         </button>
       </div>
       <div v-else class="py-8 flex flex-col items-center gap-6">
          <div class="w-16 h-16 rounded-full border-4 border-emerald-500/30 border-t-emerald-500 animate-spin"></div>
@@ -77,17 +86,24 @@
         </div>
         <button v-if="isHost && store.questionStatus === 'snippet_playing'" @click="revealMore"
                 class="hub-btn text-sm !text-hub-warning mb-2">🔓 Открыть больше (−очки)</button>
-        <p v-else-if="store.questionStatus === 'snippet_playing' && !isHost" class="text-hub-muted text-sm italic mb-2">Слушайте фрагмент и жмите баззер, когда узнаете.</p>
+        <!-- В snippet_playing баззера ещё НЕТ (его открывает ведущий) — не зовём жать раньше времени -->
+        <p v-else-if="store.questionStatus === 'snippet_playing' && !isHost" class="text-hub-muted text-sm italic mb-2">Слушайте фрагмент — ведущий откроет баззер.</p>
       </template>
 
+      <!-- Ставка: отвечает один, промах стоит очков — предупреждаем до ответа -->
+      <p v-if="isStake && store.questionStatus === 'answering'" class="text-xs text-hub-warning font-bold mb-2">
+        ⚠ Отвечает один: неверно — минус {{ store.activeBet ?? q?.points }}, вопрос закроется
+      </p>
+
       <!-- Текст вопроса: глитч-анимация или обычный -->
-      <div v-if="q?.glitch && q?.q" class="mb-8 max-w-3xl mx-auto drop-shadow-lg w-full">
-        <div class="min-h-[80px] flex items-center justify-center">
+      <!-- Глитч — герой экрана: его расшифровывают, поэтому крупно и по центру -->
+      <div v-if="q?.glitch && q?.q" class="my-6 md:my-10 max-w-4xl mx-auto drop-shadow-lg w-full">
+        <div class="min-h-[120px] md:min-h-[160px] flex items-center justify-center">
           <GlitchText :text="q.q"
                       :seed="store.glitchSeed"
                       :isFinished="store.showAnswer"
                       :isPaused="store.questionStatus !== 'buzzer_active' && store.questionStatus !== 'buzzer_countdown' || store.buzzerResults.length > 0"
-                      class="text-4xl md:text-5xl font-black leading-relaxed text-center" />
+                      class="text-4xl md:text-6xl font-black leading-relaxed text-center" />
         </div>
       </div>
       <div v-else-if="q?.q" class="flex-1 flex flex-col justify-start items-center overflow-y-auto min-h-0 py-2 pb-6">
@@ -110,12 +126,25 @@ import MediaPlayer from '../MediaPlayer.vue'
 
 const store = useGameStore()
 const emit = defineEmits(['submitBet', 'action'])
-const isHost = computed(() => store.host?.id === store.user?.id)
+const isHost = computed(() => String(store.host?.id) === String(store.user?.id))
 const q = computed(() => store.currentQuestion)
+// Ставочные вопросы: отвечает один назначенный, неверный ответ закрывает вопрос
+const isStake = computed(() => q.value?.stake === 'auction' || q.value?.stake === 'cat')
 
 // --- Аукцион ---
-const myBet = ref(Math.ceil((store.currentQuestion?.points || 0) / 2))
-const submitBet = () => emit('submitBet', myBet.value)
+// Сервер клампит ставку в [1, баланс] (при балансе ≤0 — до номинала вопроса) и молча
+// игнорит остальное. Повторяем правило на клиенте, чтобы игрок видел предел, а не тишину.
+const myScore = computed(() => store.players.find(p => String(p.id) === String(store.user?.id))?.score || 0)
+const maxBet = computed(() => (myScore.value <= 0 ? (q.value?.points || 0) : myScore.value))
+const myBet = ref(0)
+const betValid = computed(() => Number.isFinite(myBet.value) && myBet.value >= 1 && myBet.value <= maxBet.value)
+// Дефолт — половина номинала, но не выше того, что игрок реально может поставить
+watch([maxBet, () => store.questionStatus], () => {
+  if (store.questionStatus !== 'auction_bidding') return
+  const suggested = Math.ceil((q.value?.points || 0) / 2)
+  if (!myBet.value) myBet.value = Math.max(1, Math.min(suggested, maxBet.value))
+}, { immediate: true })
+const submitBet = () => { if (betValid.value) emit('submitBet', myBet.value) }
 
 // --- Кот: локальная рулетка-цикл по игрокам (визуал; итог решает сервер).
 // rAF с шагом 100мс вместо setInterval: фоновые вкладки не жгут CPU ---

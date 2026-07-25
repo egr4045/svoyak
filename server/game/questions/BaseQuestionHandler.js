@@ -84,6 +84,7 @@ class BaseQuestionHandler {
       gameState.state.questionStatus = 'buzzer_active';
       gameState.state.buzzerReceiving = true;
       gameState.state.buzzerResults = [];
+      gameState.state.buzzerOpenedAt = Date.now(); // якорь анти-чита реакции
       delete gameState.timers.buzzerFirstHit;
       gameState.broadcast(io);
     }, 3000);

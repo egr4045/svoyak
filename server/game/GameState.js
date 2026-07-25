@@ -57,7 +57,9 @@ function questionExtraDefaults() {
     numberGuesses: {}, numberReveal: null,            // угадай число
     tierRatings: {}, tierMedians: null, tierResults: null, tierSubmitted: [], // тир-лист
     potatoRing: [], potatoTurnId: null, potatoResult: null,                    // картошка
-    reactionGrid: null, reactionRule: null, reactionWinnerId: null, reactionDone: false, // реакция
+    potatoFizzing: false, potatoFizzEndsAt: null,                              // окно «шипения» перед взрывом
+    reactionGrid: null, reactionRule: null, reactionWinnerId: null, reactionDone: false,
+    reactionMisses: {}, reactionEndsAt: null,        // реакция: публичные промахи + дедлайн
     whoSaidCount: 0, whoSaidAnswers: null, whoSaidGuesses: {}, whoSaidResult: null,       // кто сказал
     duelState: null,                                  // камень-ножницы
     aliasState: null, aliasResult: null,              // алиас

@@ -53,9 +53,11 @@ describe('GameState 10-Player Integration', () => {
     game.startGame();
     game.selectQuestion(0, 0); // Among Us
     game.state.questionStatus = 'among_us_voting';
-    
-    const imposterId = game.state.imposterId;
+
+    // id шпиона до вскрытия живёт вне broadcast-стейта (фикс утечки через devtools)
+    const imposterId = game._priv.imposterId;
     expect(imposterId).toBeDefined();
+    expect(game.state.imposterId).toBeNull();
 
     // 7 players vote for imposter, 3 vote elsewhere
     const players = game.state.players;

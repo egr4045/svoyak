@@ -16,16 +16,20 @@
 
       <!-- Оба выбраны, выборы идут -->
       <template v-else-if="!ds.revealed">
-        <p class="text-xl font-black text-hub-text">{{ nameOf(ds.aId) }} <span class="text-hub-muted">vs</span> {{ nameOf(ds.bId) }}</p>
-        <p v-if="ds.tie" class="text-hub-warning font-bold">Ничья! Выбираем заново ✊✋✌</p>
+        <p class="text-xl font-black text-hub-text font-display">{{ nameOf(ds.aId) }} <span class="text-hub-muted">vs</span> {{ nameOf(ds.bId) }}</p>
+        <p class="text-xs text-hub-muted -mt-3">Победителю дуэли: <b class="text-party-lime">+{{ pts }}</b></p>
+        <p v-if="ds.tie" class="text-hub-warning font-bold anim-shake">Ничья! Выбираем заново ✊✋✌</p>
 
         <!-- Я дуэлянт и ещё не выбрал -->
-        <div v-if="amDuelist && !myReady" class="flex gap-3">
-          <button v-for="c in choices" :key="c.k" @click="pick(c.k)"
-                  class="w-20 h-20 rounded-2xl bg-hub-deep border-2 border-hub-border hover:border-hub-accent text-4xl transition-all hover:scale-105">
-            {{ c.e }}
-          </button>
-        </div>
+        <template v-if="amDuelist && !myReady">
+          <div class="flex gap-3">
+            <button v-for="c in choices" :key="c.k" @pointerdown="pick(c.k)"
+                    class="w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-hub-deep border-2 border-hub-border hover:border-party-pink hover:glow-pink text-4xl transition-all hover:scale-105 active:scale-95">
+              {{ c.e }}
+            </button>
+          </div>
+          <p class="text-xs text-hub-muted">Выбирайте тайно — соперник не видит ваш выбор 🤫</p>
+        </template>
         <p v-else-if="amDuelist" class="text-hub-positive font-bold">Вы выбрали ✓ Ждём соперника…</p>
 
         <!-- Наблюдающие/ведущий: статус готовности -->
@@ -37,31 +41,37 @@
       <!-- Вскрытие -->
       <template v-else>
         <div class="flex items-center gap-6">
-          <div class="flex flex-col items-center gap-1">
-            <span class="text-5xl">{{ emoji(ds.aPick) }}</span>
-            <span class="font-bold" :class="ds.winnerId === ds.aId ? 'text-hub-positive' : 'text-hub-muted'">{{ nameOf(ds.aId) }}</span>
+          <div class="flex flex-col items-center gap-1 anim-pop-in">
+            <span class="text-6xl">{{ emoji(ds.aPick) }}</span>
+            <span class="font-bold" :class="ds.winnerId === ds.aId ? 'text-party-lime' : 'text-hub-muted'">{{ nameOf(ds.aId) }}</span>
           </div>
-          <span class="text-2xl text-hub-muted">vs</span>
-          <div class="flex flex-col items-center gap-1">
-            <span class="text-5xl">{{ emoji(ds.bPick) }}</span>
-            <span class="font-bold" :class="ds.winnerId === ds.bId ? 'text-hub-positive' : 'text-hub-muted'">{{ nameOf(ds.bId) }}</span>
+          <span class="text-2xl text-hub-muted font-display">vs</span>
+          <div class="flex flex-col items-center gap-1 anim-pop-in anim-stagger" style="--stagger: 2">
+            <span class="text-6xl">{{ emoji(ds.bPick) }}</span>
+            <span class="font-bold" :class="ds.winnerId === ds.bId ? 'text-party-lime' : 'text-hub-muted'">{{ nameOf(ds.bId) }}</span>
           </div>
         </div>
-        <p class="text-hub-positive text-xl font-black">🏆 Победил: {{ nameOf(ds.winnerId) }}</p>
+        <p class="text-hub-positive text-xl font-black anim-rise-in">🏆 Победил: {{ nameOf(ds.winnerId) }} <span class="text-party-lime">+{{ pts }}</span></p>
       </template>
     </template>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useGameStore } from '../../stores/game'
+import { playSfx } from '../../lib/sfx'
 import PlayerPicker from './PlayerPicker.vue'
 
 const store = useGameStore()
 const emit = defineEmits(['action'])
 const isHost = computed(() => store.host?.id === store.user?.id)
 const ds = computed(() => store.duelState)
+const pts = computed(() => store.currentQuestion?.points || 0)
+
+// Звуковая драма: вскрытие и ничья
+watch(() => ds.value?.revealed, (r) => { if (r) playSfx('correct') })
+watch(() => ds.value?.tie, (t) => { if (t) playSfx('quack') })
 
 const choices = [{ k: 'rock', e: '🪨' }, { k: 'paper', e: '📄' }, { k: 'scissors', e: '✂️' }]
 const EMO = { rock: '🪨', paper: '📄', scissors: '✂️' }

@@ -72,7 +72,12 @@ export function makeMockSocket(store) {
       case 'host:pauseAmongUsTimer': store.amongUsTimerState = { status: 'paused', timeLeft: data.timeLeft }; break
       case 'host:resumeAmongUsTimer': store.amongUsTimerState = { status: 'running', endsAt: Date.now() + data.timeLeft * 1000, timeLeft: data.timeLeft }; break
       case 'player:voteAmongUs': store.amongUsVotes = { ...store.amongUsVotes, [meId()]: data }; break
-      case 'host:revealAmongUs': store.amongUsResult = 'crew_win'; store.showAnswer = true; break
+      case 'host:revealAmongUs': {
+        store.amongUsResult = 'crew_win'; store.showAnswer = true
+        // Как на сервере: imposterId публикуется только при вскрытии
+        if (!store.imposterId) { const p = ps(); store.imposterId = p[1] ? p[1].id : (p[0] && p[0].id) }
+        break
+      }
 
       // --- sketch ---
       case 'player:submitSketch': store.sketchAnswers = { ...store.sketchAnswers, [meId()]: data.dataUrl }; break
@@ -169,11 +174,11 @@ export function makeMockSocket(store) {
       }
       case 'host:revealDuel': { const ds = store.duelState; if (ds && ds.aReady && ds.bReady) resolveDuel(ds); break }
 
-      // --- potato ---
-      case 'player:passPotato': {
+      // --- potato (пасует ведущий) ---
+      case 'host:passPotato': {
         const ring = store.potatoRing || []
-        if (String(store.potatoTurnId) !== String(meId()) || !ring.length) break
-        const idx = ring.findIndex(id => String(id) === String(meId()))
+        if (!ring.length) break
+        const idx = ring.findIndex(id => String(id) === String(store.potatoTurnId))
         store.potatoTurnId = ring[(idx + 1) % ring.length]
         break
       }

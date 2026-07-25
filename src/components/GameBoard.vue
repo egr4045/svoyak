@@ -26,11 +26,8 @@
       <div v-else class="relative z-10 text-hub-muted text-lg font-bold italic animate-pulse">Ожидание ведущего…</div>
     </div>
 
-    <!-- Финал (заглушка — финальное табло придёт в фазе 4) -->
-    <div v-else-if="store.questionStatus === 'game_over'" class="flex-1 flex flex-col items-center justify-center p-8 panel-glass shadow-2xl">
-      <h2 class="text-5xl font-black mb-6 tracking-widest uppercase text-center font-display text-party-gradient">Игра окончена</h2>
-      <p class="text-xl text-hub-muted font-medium">Спасибо за игру!</p>
-    </div>
+    <!-- Финал: подиум, ранжир, фейерверк -->
+    <FinalScoreboard v-else-if="store.questionStatus === 'game_over'" />
 
     <!-- Доска: десктоп/планшет — классическая сетка -->
     <template v-else>
@@ -107,6 +104,7 @@ import { computed, watch } from 'vue'
 import { useGameStore } from '../stores/game'
 import { rain } from '../lib/confetti'
 import { playSfx, preloadSfx } from '../lib/sfx'
+import FinalScoreboard from './FinalScoreboard.vue'
 
 const store = useGameStore()
 const isHost = computed(() => store.host?.id === store.user?.id)

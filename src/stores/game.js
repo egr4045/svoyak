@@ -11,7 +11,9 @@ function extraStateDefaults() {
     numberGuesses: {}, numberReveal: null,            // угадай число
     tierRatings: {}, tierMedians: null, tierResults: null, tierSubmitted: [], // тир-лист
     potatoRing: [], potatoTurnId: null, potatoResult: null,                    // картошка
-    reactionGrid: null, reactionRule: null, reactionWinnerId: null, reactionDone: false, // реакция
+    potatoFizzing: false, potatoFizzEndsAt: null,                              // окно «шипения» перед взрывом
+    reactionGrid: null, reactionRule: null, reactionWinnerId: null, reactionDone: false,
+    reactionMisses: {}, reactionEndsAt: null,        // реакция: публичные промахи + дедлайн
     whoSaidCount: 0, whoSaidAnswers: null, whoSaidGuesses: {}, whoSaidResult: null,       // кто сказал
     duelState: null,                                  // камень-ножницы
     aliasState: null, aliasResult: null,              // алиас
@@ -82,6 +84,8 @@ export const useGameStore = defineStore('game', {
     // Синхронизация медиа: оценка дельты часов клиент↔сервер (sync:ping).
     // Активный медиаэлемент живёт вне стора — см. src/lib/mediaBus.js
     serverTimeDelta: 0,
+    // Шина приколов ведущего: последнее транзиентное событие (EffectsOverlay вотчит seq)
+    funEvent: null, // { seq, kind: 'sound'|'effect'|'roulette', ...payload }
     // Приватный/запечатанный показ (караоке/крокодил/алиас): секрет НЕ приходит в
     // gameStateUpdated, а адресным событием 'privateReveal' только исполнителю и ведущему
     privateReveal: null,
@@ -249,6 +253,14 @@ export const useGameStore = defineStore('game', {
       this.socket.on('privateReveal', (payload) => {
         this.privateReveal = payload;
       });
+
+      // Приколы ведущего — транзиентные события вне стейта комнаты
+      const pushFun = (kind) => (payload) => {
+        this.funEvent = { seq: (this.funEvent?.seq || 0) + 1, kind, ...payload };
+      };
+      this.socket.on('fun:sound', pushFun('sound'));
+      this.socket.on('fun:effect', pushFun('effect'));
+      this.socket.on('fun:roulette', pushFun('roulette'));
     },
 
     // Аватар-строка от хаба может быть URL/data (картинка) или эмодзи/текст
@@ -337,7 +349,6 @@ export const useGameStore = defineStore('game', {
     revealTextAnswers() { this.socket?.emit('host:revealTextAnswers') },
     judgeSingleTextAnswer(playerId, isCorrect) { this.socket?.emit('host:judgeSingleTextAnswer', { playerId, isCorrect }) },
     resetGame() { this.socket?.emit('host:resetGame') },
-    pauseGlitch() { this.socket?.emit('player:pauseGlitch') },
     makeSpectator(playerId) { this.socket?.emit('host:makeSpectator', playerId) },
     promoteSpectator(spectatorId) { this.socket?.emit('host:promoteSpectator', spectatorId) },
     takeSeat() { this.socket?.emit('spectator:takeSeat') }

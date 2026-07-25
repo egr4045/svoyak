@@ -34,24 +34,39 @@
       </template>
     </div>
 
-    <!-- Группа: локальный просмотр ответа + закрыть -->
+    <!-- Группа: локальный просмотр ответа + закрыть.
+         «Ответ» прячем, когда его нет в broadcast (в числе/шоу сервер затирает q.a) -->
     <div class="flex items-center gap-2 border-l border-hub-border pl-3">
-      <button @click="store.showAnswer = !store.showAnswer" class="hub-btn px-4 py-2.5 text-sm">
+      <button v-if="hasRevealableAnswer" @click="store.showAnswer = !store.showAnswer" class="hub-btn px-4 py-2.5 text-sm">
         {{ store.showAnswer ? '🙈 Скрыть ответ' : '👁 Ответ' }}
       </button>
       <button @click="store.closeQuestion" class="hub-btn px-4 py-2.5 text-sm !text-hub-negative">✕ Закрыть</button>
     </div>
   </div>
+
+  <!-- Подтверждение вскрытия, когда ответили не все (единственное место — пульт) -->
+  <div v-if="confirmReveal" class="fixed inset-0 z-[110] bg-black/80 flex items-center justify-center p-4" @click.self="confirmReveal = null">
+    <div class="panel-glass border-hub-negative/60 p-8 max-w-lg w-full flex flex-col items-center text-center anim-pop-in">
+      <h3 class="text-2xl md:text-3xl font-black text-hub-negative mb-4 uppercase font-display">Ещё не все ответили!</h3>
+      <p class="text-hub-muted text-base md:text-lg mb-8">Часть игроков ещё не успела отправить ответ. Вскрываем, лишая их шанса?</p>
+      <div class="flex gap-4 w-full">
+        <button @click="confirmReveal = null" class="hub-btn flex-1 py-4">Подождать</button>
+        <button @click="doConfirmedReveal" class="hub-btn-primary flex-1 py-4 !bg-hub-negative">Вскрываем!</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useGameStore } from '../stores/game'
 
 const store = useGameStore()
 const isHost = computed(() => store.host && store.user && String(store.host.id) === String(store.user.id))
 
 const hasMedia = computed(() => ['audio', 'video'].includes(store.currentQuestion?.mediaType))
+// В «числе» и «шоу» сервер затирает q.a из broadcast — кнопка показала бы пустоту
+const hasRevealableAnswer = computed(() => !!String(store.currentQuestion?.a || '').trim())
 
 const STATUS_LABELS = {
   reading: 'Чтение вопроса',
@@ -84,8 +99,53 @@ const STATUS_LABELS = {
 }
 const statusLabel = computed(() => STATUS_LABELS[store.questionStatus] || '')
 
+// Вопрос отыгран: очки начислены, показывать больше нечего — нужна одна кнопка «дальше».
+// Общее правило: статус вернулся в 'idle', но ячейка ещё открыта (так завершаются quiz,
+// шоу, скетч, картошка). Плюс явные «экраны итогов», которые остаются в своём статусе.
+const isResolved = computed(() => {
+  const s = store.questionStatus
+  if (!store.activeCell) return false
+  if (s === 'idle') return true
+  if (s === 'number_results' || s === 'tier_results' || s === 'whosaid_results') return true
+  if (s === 'reaction_active' && store.reactionDone) return true
+  if (s === 'among_us_voting' && store.amongUsResult) return true
+  if (s === 'rps_picking' && store.duelState?.revealed) return true
+  return false
+})
+
+// Следующий в кольце картошки — подписываем прямо на кнопке паса
+const nextPotatoName = computed(() => {
+  const ring = store.potatoRing || []
+  if (ring.length < 2) return ''
+  const idx = ring.findIndex(id => String(id) === String(store.potatoTurnId))
+  if (idx === -1) return ''
+  return store.getPlayerById(ring[(idx + 1) % ring.length])?.name || ''
+})
+
+// Вскрытие письменных ответов: если ответили не все — сначала подтверждение
+const confirmReveal = ref(null) // null | 'text' | 'whosaid'
+function requestReveal(kind) {
+  const total = store.players.length
+  const done = kind === 'text' ? Object.keys(store.textAnswers || {}).length : (store.whoSaidCount || 0)
+  if (done >= total) doReveal(kind)
+  else confirmReveal.value = kind
+}
+function doReveal(kind) {
+  if (kind === 'text') store.revealTextAnswers()
+  else store.emitAction('host:revealWhoSaid')
+}
+function doConfirmedReveal() {
+  const kind = confirmReveal.value
+  confirmReveal.value = null
+  if (kind) doReveal(kind)
+}
+
 // Главное контекстное действие для каждого этапа — закрывает «тупики» всех типов
 const primary = computed(() => {
+  // Отыгранный вопрос: одна очевидная кнопка вместо «залипших» действий
+  if (isResolved.value) {
+    return { label: 'Далее ▶', tone: 'positive', run: () => store.closeQuestion() }
+  }
   switch (store.questionStatus) {
     case 'reading':
       return { label: '▶ Пуск баззера', run: () => store.startBuzzer() }
@@ -93,7 +153,7 @@ const primary = computed(() => {
       // Выход из зависшего баззера, если никто не нажал
       return { label: 'Никто не ответил', tone: 'danger', run: () => store.closeQuestion() }
     case 'text_inputting':
-      return { label: 'Вскрыть ответы', run: () => store.revealTextAnswers() }
+      return { label: 'Вскрыть ответы', run: () => requestReveal('text') }
     case 'auction_bidding':
       return { label: 'Вскрыть ставки', run: () => store.revealAuctionBets() }
     case 'cat_target_selection':
@@ -103,11 +163,11 @@ const primary = computed(() => {
     case 'sketch_drawing':
       return { label: 'Завершить рисование', run: () => store.revealSketches() }
     case 'text_judging':
-      // Для Амогуса после проверки — запуск голосования; иначе просто закрыть
+      // Для Амогуса после проверки — запуск голосования; иначе закрыть вопрос
       return store.currentQuestion?.type === 'among_us'
         ? { label: '🕵 Начать голосование', run: () => store.startAmongUsTimer() }
-        : null
-    // --- Новые типы-мини-игры ---
+        : { label: 'Далее ▶', tone: 'positive', run: () => store.closeQuestion() }
+    // --- Типы-мини-игры ---
     case 'performer_select':
       return { label: '🎲 Случайный исполнитель', run: () => store.emitAction('host:setPerformer', null) }
     case 'performing':
@@ -119,11 +179,19 @@ const primary = computed(() => {
     case 'tier_rating':
       return { label: 'Подвести итоги', run: () => store.emitAction('host:revealTier') }
     case 'whosaid_collecting':
-      return { label: 'Вскрыть ответы', run: () => store.emitAction('host:revealWhoSaid') }
+      return { label: 'Вскрыть ответы', run: () => requestReveal('whosaid') }
     case 'whosaid_guessing':
       return { label: 'Показать авторов', run: () => store.emitAction('host:scoreWhoSaid') }
     case 'snippet_playing':
       return { label: '▶ Пуск баззера', run: () => store.startBuzzer() }
+    case 'potato_playing': {
+      // Пасует ведущий: он слышит ответ игрока. В шипении — та же кнопка, но «горит».
+      // Имени может не быть (в кольце один игрок) — тогда без стрелки в пустоту.
+      const to = nextPotatoName.value ? ` ➡ ${nextPotatoName.value}` : ' дальше'
+      return store.potatoFizzing
+        ? { label: `🔥 Горит! Передать${to}`, tone: 'danger', run: () => store.emitAction('host:passPotato') }
+        : { label: `Передать${to}`, run: () => store.emitAction('host:passPotato') }
+    }
     case 'reaction_active':
       return { label: 'Показать ответ', tone: 'danger', run: () => store.emitAction('host:endReaction') }
     default:

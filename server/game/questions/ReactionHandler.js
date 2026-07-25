@@ -1,7 +1,12 @@
 const BaseQuestionHandler = require('./BaseQuestionHandler');
 
-// Реакция: движок сам строит сетку ячеек (цвет × тип × символ) и правило с ЕДИНСТВЕННЫМ верным
-// ответом. Первый верный тап берёт очки; неверный — штраф и блок. Индекс ответа держим вне broadcast.
+// Реакция: движок сам строит сетку ячеек (цвет × тип × символ) и правило с ЕДИНСТВЕННЫМ
+// верным ответом. Раунд двухфазный и серверный (честная гонка):
+//   1) все читают ПРАВИЛО (~2.5с), сетка скрыта;
+//   2) сервер публикует сетку + дедлайн — первый верный тап берёт очки.
+// Промах: штраф −points/2, блок до конца, публичная метка ✖ (reactionMisses — веселье!).
+// Раунд не зависает: авто-финиш по дедлайну или когда промахнулись все.
+// Индекс верного ответа держим вне broadcast (_priv).
 
 const COLORS = [
   { k: 'green', hex: '#49a05a', adj: 'зелёное' },
@@ -17,6 +22,9 @@ const KINDS = [
 const LETTERS = 'АБВГДЕКМНОПРСТABCDEFKMNPQRS'.split('');
 const DIGITS = '0123456789'.split('');
 const SHAPES = ['●', '▲', '■', '★', '♦', '✚', '◆'];
+
+const REVEAL_DELAY_MS = 2500; // чтение правила до появления сетки
+const ROUND_MS = 12000;       // дедлайн после появления сетки
 
 const rnd = (arr) => arr[Math.floor(Math.random() * arr.length)];
 const colorAdj = (k) => COLORS.find(c => c.k === k).adj;
@@ -89,37 +97,70 @@ class ReactionHandler extends BaseQuestionHandler {
   onSelect(gameState, question) {
     const { cells, answer, text } = generateGrid();
     gameState.state.questionStatus = 'reaction_active';
-    gameState.state.reactionGrid = cells;
+    gameState.state.reactionGrid = null;      // сетка скрыта до конца фазы чтения правила
     gameState.state.reactionRule = text;
     gameState.state.reactionWinnerId = null;
     gameState.state.reactionDone = false;
+    gameState.state.reactionMisses = {};
+    gameState.state.reactionEndsAt = null;
     gameState._priv.reactionAnswer = answer;
-    gameState.addLog('Реакция! Кто быстрее и точнее?', 'warning');
+    gameState._priv.reactionCells = cells;
+    gameState.addLog('Реакция! Читаем правило…', 'warning');
+  }
+
+  // io доступен только после onSelect (см. roomHandlers host:selectQuestion → room.afterSelect)
+  afterSelect(gameState, { io }) {
+    gameState.timers.reactionReveal = setTimeout(() => this.revealGrid(gameState, io), REVEAL_DELAY_MS);
+  }
+
+  revealGrid(gameState, io) {
+    if (gameState.state.questionStatus !== 'reaction_active' || gameState.state.reactionDone) return;
+    gameState.state.reactionGrid = gameState._priv.reactionCells;
+    gameState.state.reactionEndsAt = Date.now() + ROUND_MS;
+    gameState.timers.reactionAuto = setTimeout(() => this.finish(gameState, io, 'timeout'), ROUND_MS);
+    gameState.broadcast(io);
+  }
+
+  finish(gameState, io, why = 'host') {
+    if (gameState.state.questionStatus !== 'reaction_active' || gameState.state.reactionDone) return;
+    if (gameState.timers.reactionAuto) { clearTimeout(gameState.timers.reactionAuto); delete gameState.timers.reactionAuto; }
+    gameState.state.reactionDone = true;
+    // Если сетку так и не показали (финиш во время чтения правила) — покажем с ответом
+    if (!gameState.state.reactionGrid) gameState.state.reactionGrid = gameState._priv.reactionCells;
+    const a = gameState._priv.reactionAnswer;
+    if (gameState.state.reactionGrid[a]) gameState.state.reactionGrid[a].correct = true;
+    if (why === 'timeout') gameState.addLog('⏱ Время вышло — никто не успел.', 'warning');
+    if (why === 'all_missed') gameState.addLog('Все промахнулись 🙈 Верная ячейка подсвечена.', 'error');
+    gameState.broadcast(io);
   }
 
   handleAction(gameState, action, data, { io, user }) {
     if (action === 'player:tapTarget') {
       if (gameState.state.questionStatus !== 'reaction_active' || gameState.state.reactionDone) return;
-      if (gameState.sealed[String(user.id)]) return; // уже ошибся — заблокирован
+      if (!gameState.state.reactionGrid) return;      // сетка ещё скрыта — тапать нечего
+      if (gameState.sealed[String(user.id)]) return;  // уже ошибся — заблокирован
       const q = gameState.getCurrentQuestion();
       const idx = data && Number(data.idx);
       if (idx === gameState._priv.reactionAnswer) {
+        if (gameState.timers.reactionAuto) { clearTimeout(gameState.timers.reactionAuto); delete gameState.timers.reactionAuto; }
         gameState.adjustScore(user.id, q.points || 0);
         gameState.state.reactionWinnerId = user.id;
         gameState.state.reactionDone = true;
         if (gameState.state.reactionGrid[idx]) gameState.state.reactionGrid[idx].correct = true;
         gameState.addLog('Есть верный тап!', 'success');
+        gameState.broadcast(io);
       } else {
-        gameState.sealed[String(user.id)] = true; // блок до конца
+        gameState.sealed[String(user.id)] = true;     // блок до конца
+        gameState.state.reactionMisses[String(user.id)] = idx; // публичный ✖ — пусть все видят промах
         gameState.adjustScore(user.id, -Math.max(1, Math.round((q.points || 0) / 2)));
+        // Все игроки промахнулись → нет смысла ждать дедлайн
+        const allMissed = gameState.state.players.length > 0 &&
+          gameState.state.players.every(p => gameState.sealed[String(p.id)]);
+        if (allMissed) { this.finish(gameState, io, 'all_missed'); return; }
+        gameState.broadcast(io);
       }
-      gameState.broadcast(io);
     } else if (action === 'host:endReaction') {
-      if (gameState.state.questionStatus !== 'reaction_active') return;
-      gameState.state.reactionDone = true;
-      const a = gameState._priv.reactionAnswer;
-      if (gameState.state.reactionGrid[a]) gameState.state.reactionGrid[a].correct = true;
-      gameState.broadcast(io);
+      this.finish(gameState, io, 'host');
     }
   }
 }
@@ -127,3 +168,5 @@ class ReactionHandler extends BaseQuestionHandler {
 module.exports = ReactionHandler;
 module.exports.generateGrid = generateGrid; // экспорт для юнит-теста уникальности
 module.exports.satisfies = satisfies;
+module.exports.REVEAL_DELAY_MS = REVEAL_DELAY_MS;
+module.exports.ROUND_MS = ROUND_MS;

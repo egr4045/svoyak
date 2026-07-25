@@ -16,10 +16,31 @@ describe('AmongUsHandler', () => {
     mockIo = createMockIo();
   });
 
-  test('onSelect assigns an imposter', () => {
+  test('onSelect назначает шпиона ВНЕ broadcast (утечка через devtools закрыта)', () => {
     handler.onSelect(mockGS, { points: 200 });
-    expect(mockGS.state.imposterId).toBeDefined();
-    expect(['p1', 'p2', 'p3']).toContain(mockGS.state.imposterId);
+    expect(mockGS.state.imposterId).toBeNull();               // в стейте пусто до вскрытия
+    expect(['p1', 'p2', 'p3']).toContain(mockGS._priv.imposterId);
+  });
+
+  test('afterSelect приватно сообщает роль шпиону и имя — ведущему', () => {
+    handler.onSelect(mockGS, { points: 200 });
+    handler.afterSelect(mockGS, { io: mockIo });
+    expect(mockGS.setPrivateReveal).toHaveBeenCalled();
+    const [target, perfPayload, hostPayload] = mockGS.setPrivateReveal.mock.calls[0];
+    expect(target).toBe(mockGS._priv.imposterId);
+    expect(perfPayload.kind).toBe('imposter');
+    expect(hostPayload.kind).toBe('imposter_host');
+    expect(typeof hostPayload.imposterName).toBe('string');
+  });
+
+  test('revealAmongUs публикует imposterId для бейджа «ШПИОН»', () => {
+    handler.onSelect(mockGS, { points: 200 });
+    const imp = mockGS._priv.imposterId;
+    mockGS.state.questionStatus = 'among_us_voting';
+    mockGS.state.amongUsVotes = {};
+    mockGS.state.textAnswers = { p1: 'a', p2: 'b', p3: 'c' };
+    handler.revealAmongUs(mockGS, mockIo);
+    expect(mockGS.state.imposterId).toBe(imp);
   });
 
   test('revealAmongUs awards crew if imposter is found (majority votes)', () => {

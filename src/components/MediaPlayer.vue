@@ -21,11 +21,11 @@
         <Video class="w-16 h-16 opacity-30" />
         <span class="text-sm font-black uppercase tracking-[0.2em]">{{ label || 'Видеоматериал' }}</span>
       </div>
-      <button v-if="blocked && !error" @click="retry" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
+      <button v-if="blocked && !error" @click="retry" class="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
         <span class="text-5xl">▶</span>
         <span class="text-xs font-bold uppercase tracking-widest">{{ mutedAutoplay ? 'Нажмите, чтобы включить звук' : 'Нажмите, чтобы воспроизвести' }}</span>
       </button>
-      <div v-if="error" class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80">
+      <div v-if="error" class="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/80">
         <span class="text-hub-negative text-sm font-bold uppercase tracking-widest">Медиа не загрузилось</span>
         <button @click="retry" class="hub-btn text-xs">↻ Повторить</button>
       </div>
@@ -41,11 +41,11 @@
         </div>
         <span class="text-xs font-black uppercase tracking-[0.2em] text-slate-500">{{ label || 'Аудиофрагмент' }}</span>
       </div>
-      <button v-if="blocked && !error" @click="retry" class="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
+      <button v-if="blocked && !error" @click="retry" class="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
         <span class="text-5xl">▶</span>
         <span class="text-xs font-bold uppercase tracking-widest">Нажмите, чтобы включить звук</span>
       </button>
-      <div v-if="error" class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80">
+      <div v-if="error" class="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 bg-black/80">
         <span class="text-hub-negative text-sm font-bold uppercase tracking-widest">Медиа не загрузилось</span>
         <button @click="retry" class="hub-btn text-xs">↻ Повторить</button>
       </div>

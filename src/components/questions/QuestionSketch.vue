@@ -1,12 +1,18 @@
 <template>
   <div class="flex-1 flex flex-col items-center">
-    <div v-if="store.questionStatus === 'sketch_drawing' && !store.isSpectator" class="w-full h-full max-h-[60vh] relative mb-12">
+    <!-- Задание всегда на виду -->
+    <h3 v-if="store.currentQuestion.q" class="text-xl md:text-2xl font-black text-hub-text text-center mb-2">🎨 {{ store.currentQuestion.q }}</h3>
+
+    <div v-if="store.questionStatus === 'sketch_drawing' && !store.isSpectator && !isHost" class="w-full h-full max-h-[60vh] relative mb-12">
       <SketchCanvas ref="sketchCanvas" @submit="submitSketch" />
     </div>
     <div v-else-if="store.questionStatus === 'sketch_drawing'" class="text-slate-400 text-lg italic py-16">
       Игроки рисуют… 👁
     </div>
 
+    <p v-if="store.questionStatus === 'sketch_judging' && !isHost && !store.isSpectator" class="text-xs text-hub-muted mb-3">
+      Голосуйте за лучший рисунок (за свой нельзя). Ведущий наградит победителя.
+    </p>
     <div v-if="store.questionStatus === 'sketch_judging'" class="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
       <div v-for="(sketchUrl, pId) in store.sketchAnswers" :key="pId"
            class="bg-white/5 border border-white/5 rounded-3xl overflow-hidden flex flex-col p-4 transition-all duration-300 group hover:bg-white/10"

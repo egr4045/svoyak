@@ -2,18 +2,7 @@
   <div v-if="store.activeCell" class="absolute inset-0 z-50 flex items-center justify-center p-0 sm:p-2 md:p-4 bg-black/85 sm:rounded-3xl anim-fade-in">
     <div class="panel-glass border-hub-accent/40 p-3 sm:p-4 md:p-6 max-w-4xl w-full shadow-2xl flex flex-col text-center relative max-h-full sm:max-h-[92dvh] h-full sm:h-auto overflow-y-auto rounded-none sm:rounded-[14px] anim-pop-in">
       
-      <!-- Confirm Reveal Dialog -->
-      <div v-if="confirmRevealDialog" class="fixed inset-0 z-[110] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-         <div class="panel-glass border-hub-negative/60 p-8 max-w-lg w-full flex flex-col items-center text-center">
-            <h3 class="text-3xl font-black text-hub-negative mb-4 uppercase">Ещё не все ответили!</h3>
-            <p class="text-hub-muted text-lg mb-8">Часть игроков ещё не успела отправить свой ответ. Вскрываем, лишая их шанса?</p>
-            <div class="flex gap-4 w-full">
-               <button @click="confirmRevealDialog = false" class="hub-btn flex-1 py-4">Подождать</button>
-               <button @click="confirmRevealDialog = false; store.revealTextAnswers()" class="hub-btn-primary flex-1 py-4 !bg-hub-negative">Вскрываем!</button>
-            </div>
-         </div>
-      </div>
-
+      <!-- Управление ведущего целиком живёт в HostPanel (пульт внизу) — здесь только контент -->
       <div class="inline-block px-4 py-1.5 rounded-lg bg-hub-deep text-hub-accent font-medium text-sm mb-6 border border-hub-border mx-auto">
         {{ store.currentCategoryName }} —
         <span class="text-hub-warning font-bold">
@@ -59,7 +48,7 @@
                 <span v-else class="text-hub-muted text-xs font-bold animate-pulse">ПИШЕТ…</span>
               </div>
             </div>
-            <button @click="requestRevealTextAnswers" class="hub-btn-primary mt-8 py-4 px-8 tracking-widest uppercase flex items-center justify-center gap-3 w-full hover:scale-[1.02]"><Eye class="w-6 h-6" /> Вскрыть ответы</button>
+            <p class="text-xs text-hub-muted text-center mt-2">Вскрыть ответы — кнопкой на пульте внизу</p>
           </div>
 
           <!-- Для Игрока (право ответа) -->
@@ -91,10 +80,6 @@
               </div>
             </div>
           </div>
-          <div class="mt-8 flex justify-center gap-4">
-            <button v-if="isHost && store.currentQuestion.type === 'among_us'" @click="store.startAmongUsTimer" class="hub-btn-primary py-3 px-8">Начать обсуждение (Таймер)</button>
-            <button v-else-if="isHost" @click="store.closeQuestion" class="hub-btn py-3 px-8">Закрыть вопрос</button>
-          </div>
         </div>
       </div>
       <!-- Блок баззера / чтения / ответа — рендерится для ЛЮБОГО типа вопроса (включая glitch) -->
@@ -124,8 +109,15 @@
             </template>
             <template v-else>
               <div class="absolute inset-0 sm:rounded-3xl border-4 border-party-pink/60 buzzer-frame pointer-events-none"></div>
-              <div class="text-2xl md:text-3xl font-black font-display text-party-pink bg-hub-deep/90 px-8 md:px-12 py-5 md:py-4 rounded-full border-2 border-party-pink glow-pink group-hover:scale-105 transition-transform pointer-events-none">
-                ЖМИТЕ!
+              <!-- Глитч: жать надо не рефлекторно, а когда расшифровал — иначе запрёшь себя
+                   в ответе, не прочитав вопрос. Поэтому другая надпись + инструкция. -->
+              <div class="flex flex-col items-center gap-2 pointer-events-none">
+                <p v-if="isGlitch" class="text-sm md:text-base font-bold text-hub-text bg-hub-deep/80 px-4 py-1.5 rounded-full border border-hub-border">
+                  Расшифруй текст и жми, когда узнаешь ответ
+                </p>
+                <div class="text-2xl md:text-3xl font-black font-display text-party-pink bg-hub-deep/90 px-8 md:px-12 py-4 rounded-full border-2 border-party-pink glow-pink group-hover:scale-105 transition-transform">
+                  {{ isGlitch ? '🧬 Я УЗНАЛ!' : 'ЖМИТЕ!' }}
+                </div>
               </div>
             </template>
           </div>
@@ -174,7 +166,7 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useGameStore } from '../stores/game'
 import { playSfx } from '../lib/sfx'
-import { Eye, EyeOff, Check, X, Play, Square, BellRing, Mic } from 'lucide-vue-next'
+import { Check, X, BellRing, Mic } from 'lucide-vue-next'
 import QuestionQuiz from './questions/QuestionQuiz.vue'
 import QuestionShow from './questions/QuestionShow.vue'
 import QuestionEveryone from './questions/QuestionEveryone.vue'
@@ -202,7 +194,9 @@ const QuestionComponents = {
 }
 
 const store = useGameStore()
-const isHost = computed(() => store.host?.id === store.user?.id)
+const isHost = computed(() => String(store.host?.id) === String(store.user?.id))
+// Глитч меняет смысл баззера: не «жми первым», а «жми, когда расшифровал»
+const isGlitch = computed(() => !!store.currentQuestion?.glitch)
 
 // Универсальный мост эмитов новых типов: компонент шлёт {name, payload}.
 // player:* режем для наблюдателя; host:* сервер и так вешает только на сокет ведущего.
@@ -213,20 +207,18 @@ function onAction({ name, payload } = {}) {
 }
 
 // Локальное состояние UI
-const confirmRevealDialog = ref(false)
-const revealLoading = ref(false)
 const myTextAnswer = ref('')
 
 const activePlayerName = computed(() => {
   if (!store.answeringPlayerId) return ''
-  return store.players.find(p => p.id === store.answeringPlayerId)?.name || ''
+  return store.players.find(p => String(p.id) === String(store.answeringPlayerId))?.name || ''
 })
 
 const canIAnswer = computed(() => {
   if (isHost.value) return false;
   if (store.isSpectator) return false;
-  if (store.answeringPlayerId && store.answeringPlayerId !== store.user?.id) return false;
-  
+  if (store.answeringPlayerId && String(store.answeringPlayerId) !== String(store.user?.id)) return false;
+
   // Для шпиона Амогуса (когда идет text_inputting)
   if (store.currentQuestion?.type === 'among_us' && store.questionStatus === 'text_inputting') return true;
 
@@ -279,21 +271,7 @@ watch(() => store.questionStatus, (newStatus, oldStatus) => {
   } else {
     if (countdownInterval) clearInterval(countdownInterval);
   }
-
-  if (newStatus !== 'auction_bidding') {
-    revealLoading.value = false
-  }
 })
-
-// Методы управления
-function requestRevealTextAnswers() {
-  const allAnswered = store.players.every(p => store.textAnswers[p.id]);
-  if (allAnswered) {
-    store.revealTextAnswers();
-  } else {
-    confirmRevealDialog.value = true;
-  }
-}
 
 function submitMyAnswer() {
   const text = myTextAnswer.value.trim()

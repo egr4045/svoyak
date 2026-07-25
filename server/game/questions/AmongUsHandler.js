@@ -1,5 +1,9 @@
 const BaseQuestionHandler = require('./BaseQuestionHandler');
 
+// «Шпион» — механика «Хамелеона»: все видят вопрос, КРОМЕ шпиона (он приватно узнаёт
+// свою роль и блефует правдоподобным ответом). После вскрытия ответов — обсуждение и
+// голосование: чей ответ был блефом? id шпиона живёт вне broadcast (_priv) до вскрытия —
+// иначе любой devtools раскрывал интригу.
 class AmongUsHandler extends BaseQuestionHandler {
   constructor() {
     super('among_us');
@@ -7,12 +11,24 @@ class AmongUsHandler extends BaseQuestionHandler {
 
   onSelect(gameState, question) {
     gameState.state.questionStatus = 'text_inputting';
+    gameState.state.imposterId = null; // публикуется только при вскрытии
     if (gameState.state.players.length > 0) {
       const randomIdx = Math.floor(Math.random() * gameState.state.players.length);
-      gameState.state.imposterId = gameState.state.players[randomIdx].id;
+      gameState._priv.imposterId = gameState.state.players[randomIdx].id;
     }
     gameState.state.amongUsTimerState = null;
-    gameState.addLog(`Амогус! Шпион среди нас.`, 'error');
+    gameState.addLog(`Шпион среди нас! Кое-кто не видит вопрос…`, 'error');
+  }
+
+  // io доступен после onSelect: шпион (и ведущий) приватно узнают роль.
+  // privateReveal переживает реконнект (см. roomHandlers room:join).
+  afterSelect(gameState, { io }) {
+    const impId = gameState._priv.imposterId;
+    if (impId == null) return;
+    const impName = gameState.state.players.find(p => String(p.id) === String(impId))?.name || '—';
+    gameState.setPrivateReveal(impId,
+      { kind: 'imposter' },
+      { kind: 'imposter_host', imposterName: impName }, io);
   }
 
   handleAction(gameState, action, data, { io, socket, user }) {
@@ -58,8 +74,9 @@ class AmongUsHandler extends BaseQuestionHandler {
 
   revealAmongUs(gameState, io) {
     if (gameState.state.amongUsResult) return;
-    
-    const imposterId = gameState.state.imposterId;
+
+    // Фолбэк на state.imposterId — обратная совместимость (тесты/старые сейвы)
+    const imposterId = gameState._priv.imposterId ?? gameState.state.imposterId;
     const votes = gameState.state.amongUsVotes || {};
     const q = gameState.getCurrentQuestion();
     if (!q) return;
@@ -86,6 +103,7 @@ class AmongUsHandler extends BaseQuestionHandler {
        gameState.addLog(`Шпион победил! Им был ${gameState.state.players.find(p => same(p.id, imposterId))?.name}.`, 'error');
     }
      
+    gameState.state.imposterId = imposterId; // теперь можно публиковать (бейдж «ШПИОН»)
     gameState.state.showAnswer = true;
     gameState.clearTimers();
     gameState.broadcast(io);

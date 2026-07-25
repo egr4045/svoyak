@@ -139,13 +139,14 @@ function registerFunTools(io, socket, room) {
   socket.on('host:triggerEffect', (payload) => {
     const effect = payload && payload.effect;
     if (!EFFECTS.includes(effect)) return;
-    if (!cooled('effect', EFFECT_COOLDOWN_MS)) return;
+    // Валидация цели ДО кулдауна: отклонённый запрос не должен съедать окно
     let targetId = null;
     if (effect === 'glitch') {
       const t = room.state.players.find(p => String(p.id) === String(payload.targetId) && p.connected);
       if (!t) return; // глитч без валидной цели не имеет смысла
       targetId = t.id;
     }
+    if (!cooled('effect', EFFECT_COOLDOWN_MS)) return;
     io.to(room.roomCode).emit('fun:effect', { effect, targetId });
   });
 

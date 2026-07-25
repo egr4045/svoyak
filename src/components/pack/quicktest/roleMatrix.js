@@ -66,13 +66,20 @@ export const TYPES = {
   },
   glitch: { roles: ['host', 'answering', 'player', 'spectator'], phases: BUZZER_PHASES, seed: (p, { phase, players }) => { p.glitchSeed = 42; buzzerSeed(p, phase, players) } },
   among_us: {
-    roles: ['host', 'player', 'spectator'],
+    roles: ['host', 'imposter', 'player', 'spectator'],
     phases: [{ status: 'text_inputting', label: 'ввод' }, { status: 'text_judging', label: 'проверка' }, { status: 'among_us_voting', label: 'голосование' }, { status: 'among_us_voting', label: 'итог', tag: 'result' }],
     seed: (p, { phase, question, players }) => {
-      p.imposterId = players[1].id
-      if (phase.status === 'text_judging') p.textAnswers = { [players[0].id]: 'Ответ Ани', [players[1].id]: 'Ответ Бори' }
-      if (phase.tag === 'result') { p.amongUsResult = 'crew_win'; p.showAnswer = true; p.amongUsVotes = { [players[0].id]: players[1].id, [players[2] ? players[2].id : players[0].id]: players[1].id } }
-      else if (phase.status === 'among_us_voting') { p.amongUsTimerState = { status: 'running', endsAt: Date.now() + 120000, timeLeft: 120 }; p.amongUsVotes = { [players[0].id]: players[1].id } }
+      // Механика «Хамелеона»: imposterId публикуется только в итоге; роль — приватно
+      if (phase.tag === 'result') {
+        p.imposterId = players[1].id
+        p.amongUsResult = 'crew_win'; p.showAnswer = true
+        p.amongUsVotes = { [players[0].id]: players[1].id, [players[2] ? players[2].id : players[0].id]: players[1].id }
+      } else {
+        p._secret = { kind: 'imposter' }
+        p._imposterId = players[1].id // для маппинга роли «шпион» в applyIdentity
+        if (phase.status === 'text_judging') p.textAnswers = { [players[0].id]: 'Ответ Ани', [players[1].id]: 'Ответ Бори' }
+        if (phase.status === 'among_us_voting') { p.amongUsTimerState = { status: 'running', endsAt: Date.now() + 120000, timeLeft: 120 }; p.amongUsVotes = { [players[0].id]: players[1].id } }
+      }
     }
   },
   sketch: {
@@ -174,9 +181,14 @@ export const TYPES = {
   },
   potato: {
     roles: ['host', 'holder', 'player', 'spectator'],
-    phases: [{ status: 'potato_playing', label: 'ход' }, { status: 'idle', label: 'взрыв', tag: 'result' }],
+    phases: [
+      { status: 'potato_playing', label: 'ход' },
+      { status: 'potato_playing', label: 'шипит', tag: 'fizz' },
+      { status: 'idle', label: 'взрыв', tag: 'result' }
+    ],
     seed: (p, { phase, players }) => {
       if (phase.status === 'potato_playing') { p.potatoRing = players.map(x => x.id); p.potatoTurnId = players[0].id }
+      if (phase.tag === 'fizz') { p.potatoFizzing = true; p.potatoFizzEndsAt = Date.now() + 2500 }
       if (phase.tag === 'result') p.potatoResult = { loserId: players[1].id }
     }
   },

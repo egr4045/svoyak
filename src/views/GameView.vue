@@ -42,6 +42,24 @@
 
     <EventLog />
     <VoiceBar />
+    <FunPanel />
+    <EffectsOverlay />
+
+    <!-- Гард соединения: свой сокет отвалился -->
+    <div v-if="!store.connected" class="fixed inset-0 z-[120] bg-black/80 flex flex-col items-center justify-center gap-4 anim-fade-in">
+      <div class="w-14 h-14 rounded-full border-4 border-hub-accent/30 border-t-hub-accent animate-spin"></div>
+      <p class="text-xl font-bold text-hub-text">Переподключение…</p>
+      <p v-if="longDisconnect" class="text-sm text-hub-muted max-w-xs text-center">Связь не восстанавливается. Проверьте интернет — игра ждёт вас.</p>
+    </div>
+
+    <!-- Гард: ведущий потерял связь (игра без ведущего стоит) -->
+    <div v-else-if="hostGone" class="fixed top-14 left-1/2 -translate-x-1/2 z-[110] panel-glass border-hub-warning/60 px-6 py-3 flex items-center gap-3 anim-rise-in">
+      <span class="text-2xl animate-pulse">📡</span>
+      <div class="text-left">
+        <p class="font-bold text-hub-warning">Ведущий потерял связь</p>
+        <p class="text-xs text-hub-muted">Ждём возвращения — игра на паузе.</p>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -56,6 +74,8 @@ import ActiveQuestion from '../components/ActiveQuestion.vue'
 import HostPanel from '../components/HostPanel.vue'
 import EventLog from '../components/EventLog.vue'
 import VoiceBar from '../components/VoiceBar.vue'
+import FunPanel from '../components/host/FunPanel.vue'
+import EffectsOverlay from '../components/EffectsOverlay.vue'
 
 const store = useGameStore()
 const platform = usePlatformStore()
@@ -63,6 +83,16 @@ const router = useRouter()
 const route = useRoute()
 
 const isHost = computed(() => store.host && store.user && store.host.id === store.user.id)
+
+// Гарды соединения: свой дисконнект (оверлей) и отвал ведущего (баннер)
+const hostGone = computed(() => !isHost.value && store.gameStarted && store.host && store.host.connected === false)
+const longDisconnect = ref(false)
+let discTimer = null
+watch(() => store.connected, (ok) => {
+  clearTimeout(discTimer)
+  if (!ok) discTimer = setTimeout(() => { longDisconnect.value = true }, 10000)
+  else longDisconnect.value = false
+})
 
 onMounted(() => {
   if (!store.roomCode) {
