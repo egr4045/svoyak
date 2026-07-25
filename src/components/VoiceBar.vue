@@ -33,15 +33,20 @@
                 :title="camOn ? 'Выключить камеру' : 'Включить камеру'">
           📷
         </button>
-        <span class="text-xs text-hub-muted font-bold px-1">
-          {{ platform.voice.participants.length }} в голосе
+        <span class="text-xs text-hub-muted font-bold px-1" :title="CALL_LABEL">
+          {{ CALL_LABEL }} · {{ platform.voice.participants.length }}
         </span>
         <!-- Ошибка даже в подключённом состоянии (напр. микрофон недоступен) -->
         <span v-if="platform.voice.error" class="text-xs text-hub-warning px-1" :title="platform.voice.error">⚠ {{ platform.voice.error }}</span>
         <button v-if="isHost" @click="inviteParty"
                 class="hub-btn text-xs !text-hub-accent"
                 title="Отправить приглашение всем участникам текущего звонка">
-          🎮 Позвать участников звонка
+          🎮 Позвать всех в игру
+        </button>
+        <!-- Единственное, что завершает звонок: выход из игры его больше не рвёт -->
+        <button @click="platform.hangUp()" class="hub-btn text-xs !text-hub-negative"
+                title="Выйти из голосового чата">
+          🚪
         </button>
       </template>
       <template v-else-if="platform.voice.status === 'connecting'">
@@ -59,7 +64,7 @@
 
 <script setup>
 import { computed } from 'vue'
-import { usePlatformStore } from '../stores/platform'
+import { usePlatformStore, CALL_LABEL } from '../stores/platform'
 import { useGameStore } from '../stores/game'
 
 const platform = usePlatformStore()
@@ -72,12 +77,15 @@ const camOn = computed(() => platform.localParticipant?.camOn ?? false)
 function toggleMic() { platform.setMic(!micOn.value) }
 function toggleCam() { platform.setCam(!camOn.value) }
 async function inviteParty() {
+  if (!game.roomCode) return
   const ok = await platform.invitePartyToGame(game.roomCode)
   platform.toast(ok
     ? 'Приглашение отправлено участникам звонка'
     : 'Не удалось отправить приглашение — звонок не привязался к комнате')
 }
 function rejoin() {
+  // Вне комнаты входить некуда: без кода joinVoice всё равно вернёт false
+  if (!game.roomCode) return
   platform.joinVoice(game.roomCode, { spectator: game.isSpectator })
 }
 </script>

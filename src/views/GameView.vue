@@ -68,6 +68,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { usePlatformStore } from '../stores/platform'
+import { useCallInvite } from '../platform/useCallInvite'
 import GameBoard from '../components/GameBoard.vue'
 import PlayerPanel from '../components/PlayerPanel.vue'
 import ActiveQuestion from '../components/ActiveQuestion.vue'
@@ -117,6 +118,9 @@ watch(() => store.host, (h) => {
 watch(() => store.isSpectator, (isSpec, was) => {
   if (was && !isSpec && platform.voiceConnected) platform.setMic(true)
 })
+
+// Опоздавшие в звонок подхватываются и в середине игры
+useCallInvite(store, platform, isHost)
 
 function leaveRoom() {
   store.logout();

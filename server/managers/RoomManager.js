@@ -2,10 +2,19 @@ const GameState = require('../game/GameState');
 
 const EMPTY_ROOM_TTL_MS = 15 * 60 * 1000;
 
+// Код комнаты — не только наш id, но и ключ голосовой комнаты (`game:svoyak:<CODE>` в chat-сервисе
+// платформы). Там привязка «этот код → LiveKit-рум беседы» живёт 24 часа, а наша комната умирает
+// через 15 минут после опустошения — то есть переиспользованный код увёл бы игроков новой игры в
+// звонок посторонних людей. Поэтому: длинный код + коды никогда не выдаются повторно за время жизни
+// процесса. Пользователю код не показывается (только в /lobby/:id и ?join=), так что длина бесплатна.
+const CODE_LEN = 10;
+
 class RoomManager {
   constructor() {
     this.rooms = new Map();
     this.cleanupTimers = new Map();
+    // Все когда-либо выданные коды, включая уже удалённых комнат — см. комментарий к CODE_LEN
+    this.usedCodes = new Set();
   }
 
   generateCode() {
@@ -13,8 +22,9 @@ class RoomManager {
     let code;
     do {
       code = '';
-      for (let i = 0; i < 4; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
-    } while (this.rooms.has(code));
+      for (let i = 0; i < CODE_LEN; i++) code += chars.charAt(Math.floor(Math.random() * chars.length));
+    } while (this.usedCodes.has(code));
+    this.usedCodes.add(code);
     return code;
   }
 

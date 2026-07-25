@@ -32,7 +32,8 @@ export function platformUrls() {
 
 // Принять платформенную сессию, полученную нашим сервером через /auth/platform-bridge.
 // Если SDK уже умеет adoptSession — используем его; иначе шим: пишем сессию напрямую
-// в localStorage под ключом SDK (civa.session, см. packages/sdk/src/authClient.ts) ДО init().
+// в localStorage под ключом SDK (gamehub.session, см. packages/sdk/src/authClient.ts) ДО init().
+// Ключ звонка там же — gamehub.activeCall (packages/sdk/src/state/callStore.ts).
 export function adoptPlatformSession(session) {
   if (!session || !session.accountId || !session.accessToken) return false
   const platform = getPlatform()
@@ -41,7 +42,7 @@ export function adoptPlatformSession(session) {
     return true
   }
   try {
-    localStorage.setItem('civa.session', JSON.stringify({
+    localStorage.setItem('gamehub.session', JSON.stringify({
       accountId: session.accountId,
       displayName: session.displayName,
       accessToken: session.accessToken,

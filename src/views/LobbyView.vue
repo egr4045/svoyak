@@ -115,10 +115,27 @@
           </div>
 
           <div class="mt-8">
+            <!-- Голос — инфраструктура игры: без него не слышно вопросов. Гейт мягкий: показываем
+                 проблему и даём её решить, но старт не блокируем (микрофоны падают по-разному). -->
+            <div v-if="!platform.voiceConnected && platform.voiceSupported && platform.voiceSecure"
+                 class="mb-4 p-3 rounded-lg border border-hub-warning/40 bg-hub-warning/10">
+              <p class="text-sm text-hub-warning font-bold mb-2">🎙 Вы не в голосовом чате</p>
+              <p class="text-xs text-hub-muted mb-3">Игра идёт голосом — без него вы не услышите вопросы.</p>
+              <!-- Именно кнопка, а не авто-вход: запрос микрофона без жеста пользователя браузер
+                   может отклонить сам -->
+              <button @click="joinVoiceNow" class="hub-btn text-xs w-full">🎙 Войти в голосовой чат</button>
+            </div>
+            <div v-else-if="isHost && voiceMissing.length"
+                 class="mb-4 p-3 rounded-lg border border-hub-warning/40 bg-hub-warning/10">
+              <p class="text-sm text-hub-warning font-bold mb-1">Не в голосе: {{ voiceMissing.map(p => p.name).join(', ') }}</p>
+              <p class="text-xs text-hub-muted mb-3">Они не услышат вопросы.</p>
+              <button @click="callToVoice" class="hub-btn text-xs w-full">🎮 Позвать в звонок</button>
+            </div>
+
             <button v-if="isHost" @click="startGame" :disabled="!allReady"
                     class="hub-btn-primary w-full py-4 text-lg uppercase tracking-wide"
                     :class="{ 'opacity-50 cursor-not-allowed': !allReady }">
-              {{ allReady ? 'Начать игру' : 'Ожидание загрузки игроков…' }}
+              {{ !allReady ? 'Ожидание загрузки игроков…' : (voiceMissing.length ? 'Начать игру всё равно' : 'Начать игру') }}
             </button>
             <div v-else class="text-center text-hub-muted italic bg-hub-deep/40 p-4 rounded-lg border border-hub-border">
               Ожидание старта игры ведущим…
@@ -137,6 +154,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { usePlatformStore } from '../stores/platform'
 import { showParticipantMenu } from '../platform/contextMenu'
+import { useCallInvite } from '../platform/useCallInvite'
 import VoiceBar from '../components/VoiceBar.vue'
 
 const store = useGameStore()
@@ -178,6 +196,24 @@ const allReady = computed(() => {
   if (store.players.length === 0) return true
   return store.players.every(p => !p.connected || p.loadedAssets)
 })
+
+// Кто в игре, но не в звонке. Имеет смысл только когда я сам в звонке — вне звонка список его
+// участников пуст, и «не в голосе» показал бы вообще всех.
+const voiceMissing = computed(() => {
+  if (!platform.voiceConnected) return []
+  return [...store.players, ...store.spectators]
+    .filter(p => p.connected && p.platformId && !platform.participantFor(p.platformId))
+})
+
+function joinVoiceNow() {
+  platform.joinVoice(store.roomCode, { spectator: store.isSpectator })
+}
+function callToVoice() {
+  platform.invitePartyToGame(store.roomCode)
+}
+
+// Ведущий досылает инвайты тем, кто вошёл в звонок уже после создания игры
+useCallInvite(store, platform, isHost)
 const myAvatar = computed(() => platform.me?.avatarIcon || store.players.find(p => p.id === store.user?.id)?.avatar || null)
 
 onMounted(() => {

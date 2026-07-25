@@ -125,6 +125,15 @@ async function createGame() {
   error.value = ''
   try {
     const code = await store.createRoom(maxPlayers.value, selectedPack.value || undefined)
+    // Звонок привязываем и рассылаем инвайты ДО перехода в лобби: маппинг «комната игры → рум
+    // текущего звонка» обязан существовать раньше, чем приглашённые запросят токен, а публикация
+    // инвайта — пока ведущий ещё подключён к звонку. Голос при этом не вправе помешать хостить:
+    // любая его ошибка гасится тостом, а игра создаётся всё равно.
+    try {
+      const ok = await platform.invitePartyToGame(code)
+      if (!ok) platform.toast('Звонок не подхватился — позовите участников из лобби')
+    } catch { /* игра важнее голоса */ }
+    platform.setActivity(code)
     router.push({ name: 'lobby', params: { id: code } })
   } catch (e) {
     error.value = e.message || 'Не удалось создать игру'

@@ -1,55 +1,50 @@
-# Наряд агенту gamehub: отдать Свояк по HTTPS (чтобы заработали голос/камеры)
+# Наряд агенту gamehub — ВЫПОЛНЕН (закрыт 26.07.2026)
 
-> **Кому:** агенту в репозитории D:\dev\mygame (gamehub).
-> **Зачем:** голос/видео в Свояке не работают, потому что игра отдаётся по `http://186.246.11.239:8089`
-> (незащищённый контекст) — `getUserMedia` там заблокирован браузером. Нужно отдавать Свояк по HTTPS
-> через шлюз хаба на суб-пути `https://mygame-quiz.ru/svoyak/` (secure context + same-origin с
-> chat.io/social.io/LiveKit). Свояк-сторона (Vite base, префиксы URL) уже готова и ждёт этих правок.
-> **Результат:** запуск из хаба ведёт на `https://mygame-quiz.ru/svoyak/?pt=…`, микрофон/камера работают.
+> Наряд был про HTTPS-раздачу Свояка (без неё не работали микрофон/камера: `getUserMedia`
+> заблокирован в незащищённом контексте `http://…:8089`). **Все четыре пункта сделаны в
+> `D:\dev\mygame`** — проверено чтением репозитория, не только по коммитам:
 
-## 1. Шлюз Caddy — маршрут `/svoyak/*`
-`deploy/gamehub/Caddyfile` (сервис `web`, :8088). Добавить перед SPA-fallback `handle {}` блок по образцу
-`/example-game/*` (префикс СТРИПАЕТСЯ — сервер Свояка остаётся на root):
-```caddy
-handle_path /svoyak/* { reverse_proxy svoyak:8089 }
-```
-`svoyak` уже в сети `gamehub-net` (см. `deploy/svoyak/docker-compose.yml`). Провалидировать
-(`docker exec gamehub-web-1 caddy validate --config /etc/caddy/Caddyfile` или аналог) и перезагрузить
-web-контейнер. До пробуждения оркестратором будет 502 — это норма (как `lobby`/`cards-server`).
+| Пункт | Где | Статус |
+|---|---|---|
+| Caddy-маршрут `handle_path /svoyak/*` | `deploy/gamehub/Caddyfile:95-97` | ✅ |
+| `path: 'svoyak'` в реестре игр | `apps/hub/src/platform/games.ts:84` | ✅ |
+| `ENV VITE_BASE_PATH=/svoyak/` | `deploy/svoyak/Dockerfile:24` | ✅ |
+| IIFE SDK под браузер (`platform:'browser'`) | `packages/sdk/tsup.config.ts:25-26` | ✅ закоммичен |
 
-## 2. Реестр `apps/hub/src/platform/games.ts`
-В запись `svoyak` добавить `path: 'svoyak'` (оставить `externalPort: 8089` как dev-фолбэк — как у
-`cards`/`example-game`). Тогда `getGameOrigin` в проде вернёт `https://mygame-quiz.ru/svoyak`, и
-«Играть»/инвайты поведут на secure-URL вместо `http://:8089`. **Пересобрать + редеплой хаба** (games.ts
-компилируется в бандл).
+Коммиты в gamehub: `a858acc` (HTTPS /svoyak/) и `57f298d` (IIFE platform:browser).
 
-## 3. `deploy/svoyak/Dockerfile` — build-arg base
-Перед `RUN npm ci && npm run build` добавить:
-```dockerfile
-ENV VITE_BASE_PATH=/svoyak/
-```
-Свояк читает `process.env.VITE_BASE_PATH` в `vite.config.js` (`base`), а `API_URL`/socket.io/vendored SDK
-берут префикс из `import.meta.env.BASE_URL`. Пересобрать образ на сервере:
-`cd /root/gamehub/deploy/svoyak && docker build --network=host --no-cache -t svoyak:latest . &&
-docker compose up -d --force-recreate`.
+## Следствие, о котором важно помнить
 
-> ⚠️ **Координация:** сборку Свояка с `base=/svoyak/` катить в прод ТОЛЬКО вместе с Caddy-маршрутом (п.1),
-> иначе и прямой `:8089`, и запуск из хаба сломаются на путях ассетов (`/svoyak/assets/…` без стрипа
-> префикса не отдаётся). Порядок: (1) Caddy-маршрут → (2) rebuild svoyak с base → (3) games.ts + redeploy хаба.
+Свояк теперь **same-origin с хабом** (`https://mygame-quiz.ru/svoyak/`). Отсюда работает главное:
+`localStorage` (`gamehub.session`, `gamehub.activeCall`) общий, поэтому `call.resume()` внутри
+`mygame.init()` подхватывает групповой звонок хаба уже на странице игры — без этого «звонок
+переезжает в игру» не собрать. В dev (Свояк на `:8089`, другой origin) это не работает, и перенос
+звонка держится на `?call=` в URL запуска — см. ниже.
 
-## 4. Закоммитить IIFE-фикс SDK (из прошлого рефакторинга, всё ещё не в гите)
-`packages/sdk/tsup.config.ts` — во второй сборке (IIFE, `entry: { 'mygame-sdk': 'src/global.ts' }`) должны
-быть `platform: 'browser'` + `env: { NODE_ENV: 'production' }`. Без этого IIFE собирается под platform:node
-и падает в браузере (`process is not defined` / `Dynamic require of "fs"`), `window.mygame` не встаёт.
-Правка уже применена в рабочем дереве gamehub — **закоммитить**, чтобы будущий `pnpm --filter @mygame/sdk
-build` не вернул сломанный вариант. (Свояк уже несёт корректно собранный `public/vendor/mygame-sdk.global.js`.)
+## Что доделано сверх наряда (26.07.2026, тем же агентом, что и Свояк)
 
-## Что менять НЕ нужно
-chat-сервис, LiveKit-конфиг (`wss://mygame-quiz.ru/gamehub-livekit`), оркестратор — без изменений
-(CORS wildcard, bearer-auth, seat-agnostic room-token, `/metrics`-probe по `svoyak:8089` — всё работает).
+Работа по «звонок = лобби игры» потребовала правок на стороне хаба; они **уже внесены в
+`D:\dev\mygame`** (не закоммичены на момент написания):
 
-## Проверка (после правок)
-Запуск Свояка из хаба → адрес `https://mygame-quiz.ru/svoyak/?pt=…`. В консоли: `window.isSecureContext
-=== true`, `window.mygame` — объект, `/svoyak/vendor/mygame-sdk.global.js` 200, `/svoyak/assets/*` 200.
-Два аккаунта в одной комнате: микрофон включается без ошибки, слышно в обе стороны, камера появляется на
-карточке игрока.
+- `apps/hub/src/platform/enterGameFlow.ts` — кнопка «Играть» доносит `?call=<callKey>`, если
+  игрок в звонке. Перенос звонка перестал зависеть от общего origin (и стал тестируемым в dev).
+  `HubScreen.handlePlay` больше не дублирует этот флоу, а зовёт `enterAndPlayGame`.
+- `services/chat/src/server.ts` + `packages/protocol/src/chat.ts` — `POST /chat/call/unbind`
+  (снимает привязку `game:<g>:<r>` → рум беседы; участник беседы только, идемпотентен) и
+  необязательный `label` у `/chat/call/bind`, который возвращается из `/chat/call/room-token`.
+  Без unbind алиас жил все 24 ч TTL, и игра, переиспользовавшая код комнаты, увела бы своих
+  игроков в чужой звонок.
+- `packages/sdk` — `call.unbindRoom({game,room})`, `bindToRoom({...,label})`, состояние
+  `boundGame`, `getState()` отдаёт `conversationId`/`label`/`boundGame`; `CallView` титулует
+  привязанный разговорный звонок именем игры («Лобби Свояк») вместо имени беседы.
+- Тесты: `services/chat/src/server.test.ts` — bind→unbind меняет реально выдаваемый LiveKit-рум,
+  чужой не может отвязать, unbind несуществующего не ошибка.
+
+После любой пересборки SDK в Свояке нужно `npm run sdk:sync` (копирует IIFE в
+`public/vendor/mygame-sdk.global.js`) — уже сделано для правок выше.
+
+## Известное, НЕ трогали
+
+`apps/hub/src/mobile/MobileFriendsTab.tsx:33,312` — 2 ошибки eslint
+(`no-unused-expressions`), из-за которых падает `pnpm lint` в `@mygame/hub`. Они были на чистом
+HEAD до этих правок; чужая территория, не наша волна.
