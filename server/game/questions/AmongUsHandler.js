@@ -1,9 +1,15 @@
 const BaseQuestionHandler = require('./BaseQuestionHandler');
 
-// «Шпион» — механика «Хамелеона»: все видят вопрос, КРОМЕ шпиона (он приватно узнаёт
-// свою роль и блефует правдоподобным ответом). После вскрытия ответов — обсуждение и
-// голосование: чей ответ был блефом? id шпиона живёт вне broadcast (_priv) до вскрытия —
-// иначе любой devtools раскрывал интригу.
+// «Шпион» — механика «Хамелеона»: все видят вопрос, КРОМЕ шпиона. Шпион сразу получает своё
+// задание (роль + тема категории) приватно и пишет правдоподобный ответ вслепую.
+//
+// Флоу намеренно короткий: ПИШУТ → ОБСУЖДАЮТ → ГОЛОСУЮТ. Ведущий НЕ судит ответы «верно/неверно»:
+// правильного ответа тут нет, вся соль — вычислить блеф. Как только ответили все, комната сама
+// уходит в обсуждение (ведущий может форсировать раньше, если кто-то завис).
+//
+// id шпиона живёт вне broadcast (_priv) до вскрытия — иначе любой devtools раскрывал интригу.
+const DISCUSSION_MS = 120000;
+
 class AmongUsHandler extends BaseQuestionHandler {
   constructor() {
     super('among_us');
@@ -17,6 +23,8 @@ class AmongUsHandler extends BaseQuestionHandler {
       gameState._priv.imposterId = gameState.state.players[randomIdx].id;
     }
     gameState.state.amongUsTimerState = null;
+    gameState.state.amongUsVotes = {};
+    gameState.state.amongUsResult = null;
     gameState.addLog(`Шпион среди нас! Кое-кто не видит вопрос…`, 'error');
   }
 
@@ -26,33 +34,25 @@ class AmongUsHandler extends BaseQuestionHandler {
     const impId = gameState._priv.imposterId;
     if (impId == null) return;
     const impName = gameState.state.players.find(p => String(p.id) === String(impId))?.name || '—';
+    // Тема категории — то немногое, что шпиону положено знать: без неё блефовать невозможно,
+    // а с ней у него есть шанс попасть в тон (это и есть его «задание»).
+    const cell = gameState.state.activeCell;
+    const topic = cell ? gameState.state.board?.[cell.catIdx]?.category || null : null;
     gameState.setPrivateReveal(impId,
-      { kind: 'imposter' },
-      { kind: 'imposter_host', imposterName: impName }, io);
+      { kind: 'imposter', topic },
+      { kind: 'imposter_host', imposterName: impName, topic }, io);
   }
 
   handleAction(gameState, action, data, { io, socket, user }) {
     if (action === 'player:submitTextAnswer') {
       gameState.state.textAnswers[user.id] = data.text;
+      // Все сдали — сразу обсуждение, без лишнего клика ведущего
+      if (this.everyoneAnswered(gameState)) return this.startDiscussion(gameState, io);
       gameState.broadcast(io);
-    } else if (action === 'host:revealTextAnswers') {
-       gameState.state.questionStatus = 'text_judging';
-       gameState.broadcast(io);
-    } else if (action === 'host:judgeSingleTextAnswer') {
-       const { playerId, isCorrect } = data;
-       const q = gameState.getCurrentQuestion();
-       const points = q.points;
-       if (isCorrect) gameState.adjustScore(playerId, points);
-       else gameState.adjustScore(playerId, -points);
-       delete gameState.state.textAnswers[playerId];
-       gameState.broadcast(io);
-    } else if (action === 'host:startAmongUsTimer') {
-      gameState.state.questionStatus = 'among_us_voting';
-      gameState.state.amongUsTimerState = { status: 'running', endsAt: Date.now() + 120000, timeLeft: 120 };
-      gameState.state.amongUsVotes = {};
-      // Авто-вскрытие по истечении времени, чтобы голосование не зависало навсегда
-      gameState.timers.amongUsAuto = setTimeout(() => this.revealAmongUs(gameState, io), 120000);
-      gameState.broadcast(io);
+    } else if (action === 'host:revealTextAnswers' || action === 'host:startAmongUsTimer') {
+      // Ведущий форсирует переход (кто-то завис). Оба события ведут в одно место:
+      // отдельной фазы проверки у шпиона нет.
+      this.startDiscussion(gameState, io);
     } else if (action === 'host:pauseAmongUsTimer') {
       gameState.state.amongUsTimerState = { status: 'paused', timeLeft: data.timeLeft };
       if (gameState.timers.amongUsAuto) { clearTimeout(gameState.timers.amongUsAuto); delete gameState.timers.amongUsAuto; }
@@ -72,6 +72,25 @@ class AmongUsHandler extends BaseQuestionHandler {
     }
   }
 
+  // Отключившиеся не блокируют переход; если отвалились все — ждём ведущего
+  everyoneAnswered(gameState) {
+    const conn = gameState.state.players.filter(p => p.connected);
+    if (!conn.length) return false;
+    return conn.every(p => gameState.state.textAnswers[p.id] != null);
+  }
+
+  startDiscussion(gameState, io) {
+    if (gameState.state.questionStatus === 'among_us_voting') return;
+    gameState.state.questionStatus = 'among_us_voting';
+    gameState.state.amongUsVotes = {};
+    gameState.state.amongUsTimerState = { status: 'running', endsAt: Date.now() + DISCUSSION_MS, timeLeft: DISCUSSION_MS / 1000 };
+    // Авто-вскрытие по истечении времени, чтобы голосование не зависало навсегда
+    if (gameState.timers.amongUsAuto) clearTimeout(gameState.timers.amongUsAuto);
+    gameState.timers.amongUsAuto = setTimeout(() => this.revealAmongUs(gameState, io), DISCUSSION_MS);
+    gameState.addLog('Ответы на столе — обсуждайте! Кто из них блефовал?', 'warning');
+    gameState.broadcast(io);
+  }
+
   revealAmongUs(gameState, io) {
     if (gameState.state.amongUsResult) return;
 
@@ -80,7 +99,7 @@ class AmongUsHandler extends BaseQuestionHandler {
     const votes = gameState.state.amongUsVotes || {};
     const q = gameState.getCurrentQuestion();
     if (!q) return;
-     
+
     // String-сравнения: voter — ключ объекта (строка), imposterId/target — числовые id
     const same = (a, b) => String(a) === String(b);
     const validPlayersCount = Object.keys(gameState.state.textAnswers).length || gameState.state.players.length;
@@ -102,7 +121,7 @@ class AmongUsHandler extends BaseQuestionHandler {
        }
        gameState.addLog(`Шпион победил! Им был ${gameState.state.players.find(p => same(p.id, imposterId))?.name}.`, 'error');
     }
-     
+
     gameState.state.imposterId = imposterId; // теперь можно публиковать (бейдж «ШПИОН»)
     gameState.state.showAnswer = true;
     gameState.clearTimers();

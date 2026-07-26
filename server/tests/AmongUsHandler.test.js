@@ -33,6 +33,54 @@ describe('AmongUsHandler', () => {
     expect(typeof hostPayload.imposterName).toBe('string');
   });
 
+  test('afterSelect кладёт шпиону тему категории — это его задание', () => {
+    mockGS.state.activeCell = { catIdx: 0, qIdx: 0 };
+    mockGS.state.board = [{ category: 'Загадки человечества', questions: [{ points: 200 }] }];
+    handler.onSelect(mockGS, { points: 200 });
+    handler.afterSelect(mockGS, { io: mockIo });
+    const [, perfPayload, hostPayload] = mockGS.setPrivateReveal.mock.calls[0];
+    expect(perfPayload.topic).toBe('Загадки человечества');
+    expect(hostPayload.topic).toBe('Загадки человечества');
+  });
+
+  test('как только ответили все — сразу обсуждение, без фазы проверки', () => {
+    handler.onSelect(mockGS, { points: 200 });
+    mockGS.state.textAnswers = {};
+    const send = (id, text) => handler.handleAction(mockGS, 'player:submitTextAnswer', { text }, { io: mockIo, user: { id } });
+
+    send('p1', 'раз');
+    send('p2', 'два');
+    expect(mockGS.state.questionStatus).toBe('text_inputting'); // ещё не все
+
+    send('p3', 'три');
+    expect(mockGS.state.questionStatus).toBe('among_us_voting');
+    expect(mockGS.state.amongUsTimerState.status).toBe('running');
+    // Ответы остаются на виду — на них и голосуют
+    expect(mockGS.state.textAnswers).toEqual({ p1: 'раз', p2: 'два', p3: 'три' });
+  });
+
+  test('отключившиеся не блокируют переход в обсуждение', () => {
+    handler.onSelect(mockGS, { points: 200 });
+    mockGS.state.textAnswers = {};
+    mockGS.state.players[2].connected = false;
+    handler.handleAction(mockGS, 'player:submitTextAnswer', { text: 'раз' }, { io: mockIo, user: { id: 'p1' } });
+    handler.handleAction(mockGS, 'player:submitTextAnswer', { text: 'два' }, { io: mockIo, user: { id: 'p2' } });
+    expect(mockGS.state.questionStatus).toBe('among_us_voting');
+  });
+
+  test('host:revealTextAnswers ведёт в обсуждение, а не в проверку', () => {
+    handler.onSelect(mockGS, { points: 200 });
+    handler.handleAction(mockGS, 'host:revealTextAnswers', {}, { io: mockIo, user: { id: 'host' } });
+    expect(mockGS.state.questionStatus).toBe('among_us_voting');
+  });
+
+  test('ведущий не может судить ответы шпиона — очки не двигаются', () => {
+    handler.onSelect(mockGS, { points: 200 });
+    handler.handleAction(mockGS, 'host:judgeSingleTextAnswer', { playerId: 'p1', isCorrect: true }, { io: mockIo, user: { id: 'host' } });
+    expect(mockGS.adjustScore).not.toHaveBeenCalled();
+    expect(mockGS.state.textAnswers.p1).toBe('a'); // ответ остаётся для обсуждения
+  });
+
   test('revealAmongUs публикует imposterId для бейджа «ШПИОН»', () => {
     handler.onSelect(mockGS, { points: 200 });
     const imp = mockGS._priv.imposterId;

@@ -58,7 +58,14 @@ export function makeMockSocket(store) {
 
       // --- text_input / among_us ---
       case 'player:submitTextAnswer': store.textAnswers = { ...store.textAnswers, [meId()]: data.text }; break
-      case 'host:revealTextAnswers': store.questionStatus = 'text_judging'; break
+      // У шпиона фазы проверки нет — вскрытие ведёт прямо в обсуждение
+      case 'host:revealTextAnswers':
+        if (q().type === 'among_us') {
+          store.questionStatus = 'among_us_voting'
+          store.amongUsTimerState = { status: 'running', endsAt: Date.now() + 120000, timeLeft: 120 }
+          store.amongUsVotes = {}
+        } else store.questionStatus = 'text_judging'
+        break
       case 'host:judgeSingleTextAnswer': {
         add(data.playerId, data.isCorrect ? pts() : -pts())
         const t = { ...store.textAnswers }; delete t[data.playerId]; store.textAnswers = t

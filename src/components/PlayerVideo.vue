@@ -1,7 +1,10 @@
 <template>
+  <!-- Пока кадров нет, <video> — чёрный прямоугольник поверх аватара. Держим слой прозрачным
+       до первого кадра: под ним видно аватар, и переключение выглядит как плавное появление,
+       а не «черный экран на пару секунд». -->
   <div ref="container"
-       class="absolute inset-0 z-10 overflow-hidden rounded-xl pointer-events-none [&>video]:w-full [&>video]:h-full"
-       :class="fit === 'contain' ? '[&>video]:!object-contain' : '[&>video]:!object-cover'"></div>
+       class="absolute inset-0 z-10 overflow-hidden rounded-xl pointer-events-none transition-opacity duration-300 [&>video]:w-full [&>video]:h-full"
+       :class="[ready ? 'opacity-100' : 'opacity-0', fit === 'contain' ? '[&>video]:!object-contain' : '[&>video]:!object-cover']"></div>
 </template>
 
 <script setup>
@@ -28,16 +31,46 @@ const props = defineProps({
 
 const platform = usePlatformStore()
 const container = ref(null)
+const ready = ref(false)
 let detach = () => {}
+let observer = null
+let watched = null
+
+// <video> создаёт SDK и вставляет его в контейнер сам — ловим его появление наблюдателем
+function watchVideo() {
+  const el = container.value?.querySelector('video')
+  if (!el || el === watched) return
+  watched = el
+  const markReady = () => { ready.value = true }
+  // readyState ≥ 2 — кадр уже есть (бывает, если трек переиспользован из другого тайла)
+  if (el.readyState >= 2) markReady()
+  el.addEventListener('loadeddata', markReady)
+  el.addEventListener('playing', markReady)
+}
 
 function mount() {
   detach()
+  ready.value = false
+  watched = null
   if (container.value && props.accountId) {
     detach = platform.attachVideo(props.accountId, container.value)
+    watchVideo()
   }
 }
 
-onMounted(mount)
+onMounted(() => {
+  mount()
+  observer = new MutationObserver(() => {
+    if (!container.value?.querySelector('video')) { ready.value = false; watched = null }
+    else watchVideo()
+  })
+  if (container.value) observer.observe(container.value, { childList: true })
+})
+
 watch(() => props.accountId, mount)
-onBeforeUnmount(() => detach())
+
+onBeforeUnmount(() => {
+  observer?.disconnect()
+  detach()
+})
 </script>

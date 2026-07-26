@@ -153,7 +153,11 @@ const primary = computed(() => {
       // Выход из зависшего баззера, если никто не нажал
       return { label: 'Никто не ответил', tone: 'danger', run: () => store.closeQuestion() }
     case 'text_inputting':
-      return { label: 'Вскрыть ответы', run: () => requestReveal('text') }
+      // У шпиона нет фазы проверки: ответы вскрываются сразу в обсуждение.
+      // Кнопка нужна только чтобы не ждать зависшего игрока — обычно переход автоматический.
+      return store.currentQuestion?.type === 'among_us'
+        ? { label: '🕵 К обсуждению', run: () => requestReveal('text') }
+        : { label: 'Вскрыть ответы', run: () => requestReveal('text') }
     case 'auction_bidding':
       return { label: 'Вскрыть ставки', run: () => store.revealAuctionBets() }
     case 'cat_target_selection':
@@ -163,10 +167,8 @@ const primary = computed(() => {
     case 'sketch_drawing':
       return { label: 'Завершить рисование', run: () => store.revealSketches() }
     case 'text_judging':
-      // Для Амогуса после проверки — запуск голосования; иначе закрыть вопрос
-      return store.currentQuestion?.type === 'among_us'
-        ? { label: '🕵 Начать голосование', run: () => store.startAmongUsTimer() }
-        : { label: 'Далее ▶', tone: 'positive', run: () => store.closeQuestion() }
+      // Только письменная викторина: шпион в этот статус больше не заходит
+      return { label: 'Далее ▶', tone: 'positive', run: () => store.closeQuestion() }
     // --- Типы-мини-игры ---
     case 'performer_select':
       return { label: '🎲 Случайный исполнитель', run: () => store.emitAction('host:setPerformer', null) }

@@ -3,25 +3,26 @@
        Тот же человек одновременно остаётся в ленте внизу: SDK разрешает несколько attach
        одного участника, поэтому DOM никуда не переносим (см. PlayerVideo). -->
   <Transition name="pop">
-    <!-- Картинка-в-картинке сверху справа: не перекрывает текст вопроса (он по центру)
-         и остаётся видимой поверх открытой модалки вопроса (у неё z-50). -->
-    <div v-if="hero" class="pointer-events-none fixed top-14 md:top-16 right-2 md:right-4 z-[70] w-[min(34vw,240px)]">
-      <div class="relative rounded-2xl overflow-hidden border-2 shadow-2xl bg-hub-deep"
+    <!-- Крупно по центру: отвечающий (или исполнитель) — главный человек момента, его должно
+         быть видно как в телевизоре. Поверх модалки вопроса (у неё z-50), чуть выше центра,
+         чтобы не налезать на пульт ведущего внизу. -->
+    <div v-if="hero" class="pointer-events-none fixed left-1/2 -translate-x-1/2 top-[42%] -translate-y-1/2 z-[70] w-[min(78vw,620px)]">
+      <div class="relative rounded-3xl overflow-hidden border-4 shadow-2xl bg-hub-deep"
            :class="accent.border"
            style="aspect-ratio: 16 / 9">
-        <!-- Камера героя; если выключена — крупный аватар под ней -->
+        <!-- Камера героя; пока кадров нет (или камера выключена) — крупный аватар под ней -->
         <div class="absolute inset-0 flex items-center justify-center">
           <img v-if="hero.avatar && store.avatarIsImage(hero.avatar)" :src="store.getAvatarUrl(hero.avatar)"
-               class="w-16 h-16 rounded-2xl object-cover opacity-60" />
-          <span v-else-if="hero.avatar" class="text-5xl opacity-60">{{ hero.avatar }}</span>
-          <span v-else class="text-4xl font-black text-hub-muted opacity-60">{{ (hero.name || '?').charAt(0).toUpperCase() }}</span>
+               class="w-28 h-28 rounded-3xl object-cover opacity-70" />
+          <span v-else-if="hero.avatar" class="text-8xl opacity-70">{{ hero.avatar }}</span>
+          <span v-else class="text-7xl font-black text-hub-muted opacity-70">{{ (hero.name || '?').charAt(0).toUpperCase() }}</span>
         </div>
         <PlayerVideo v-if="hero.platformId" :account-id="hero.platformId" fit="cover" />
 
         <!-- Подпись: кто и в какой роли -->
-        <div class="absolute inset-x-0 bottom-0 z-20 px-3 py-1.5 flex items-center justify-between gap-2 bg-gradient-to-t from-black/85 to-transparent">
-          <span class="font-black text-sm truncate" :class="accent.text">{{ hero.name }}</span>
-          <span class="text-[10px] uppercase tracking-widest font-black shrink-0" :class="accent.text">{{ accent.label }}</span>
+        <div class="absolute inset-x-0 bottom-0 z-20 px-4 py-3 flex items-center justify-between gap-3 bg-gradient-to-t from-black/90 to-transparent">
+          <span class="font-black text-xl md:text-2xl truncate font-display" :class="accent.text">{{ hero.name }}</span>
+          <span class="text-xs uppercase tracking-widest font-black shrink-0" :class="accent.text">{{ accent.label }}</span>
         </div>
 
         <!-- Говорит — рамка-пульс -->

@@ -48,12 +48,14 @@
                 <span v-else class="text-hub-muted text-xs font-bold animate-pulse">ПИШЕТ…</span>
               </div>
             </div>
-            <p class="text-xs text-hub-muted text-center mt-2">Вскрыть ответы — кнопкой на пульте внизу</p>
+            <p v-if="isAmongUs" class="text-xs text-hub-muted text-center mt-2">Ответят все — обсуждение начнётся само. Судить ответы тут не нужно.</p>
+            <p v-else class="text-xs text-hub-muted text-center mt-2">Вскрыть ответы — кнопкой на пульте внизу</p>
           </div>
 
           <!-- Для Игрока (право ответа) -->
           <div v-else-if="canIAnswer" class="flex flex-col items-center gap-6">
-            <p class="text-hub-muted text-lg">Введите ваш ответ на вопрос:</p>
+            <p v-if="amISpy" class="text-hub-muted text-lg">Пишите вслепую — так, будто вопрос знаете:</p>
+            <p v-else class="text-hub-muted text-lg">Введите ваш ответ на вопрос:</p>
             <div v-if="store.textAnswers[store.user?.id]" class="w-full py-5 bg-hub-positive/15 border-2 border-hub-positive/50 text-hub-positive rounded-xl text-xl font-bold text-center">
               Ответ отправлен! Ожидание ведущего…
             </div>
@@ -197,6 +199,9 @@ const store = useGameStore()
 const isHost = computed(() => String(store.host?.id) === String(store.user?.id))
 // Глитч меняет смысл баззера: не «жми первым», а «жми, когда расшифровал»
 const isGlitch = computed(() => !!store.currentQuestion?.glitch)
+const isAmongUs = computed(() => store.currentQuestion?.type === 'among_us')
+// Шпион пишет ответ, не видя вопроса — подсказка в поле ввода другая
+const amISpy = computed(() => isAmongUs.value && !isHost.value && store.privateReveal?.kind === 'imposter')
 
 // Универсальный мост эмитов новых типов: компонент шлёт {name, payload}.
 // player:* режем для наблюдателя; host:* сервер и так вешает только на сокет ведущего.

@@ -1,12 +1,19 @@
 <template>
   <div class="flex-1 flex flex-col items-center">
-    <!-- Фаза ответов/проверки: вопрос видят все, КРОМЕ шпиона (механика «Хамелеона») -->
-    <div v-if="store.questionStatus === 'text_inputting' || store.questionStatus === 'text_judging'" class="w-full max-w-3xl mx-auto mb-4">
-      <!-- Я — шпион -->
+    <!-- Фаза ответов: вопрос видят все, КРОМЕ шпиона (механика «Хамелеона») -->
+    <div v-if="store.questionStatus === 'text_inputting'" class="w-full max-w-3xl mx-auto mb-4">
+      <!-- Я — шпион: задание сразу, без промежуточных экранов -->
       <div v-if="amImposter" class="bg-hub-negative/10 border-2 border-hub-negative/50 rounded-2xl p-5 text-center anim-pop-in">
-        <p class="text-3xl mb-1">🕵️</p>
-        <p class="text-xl font-black text-hub-negative mb-1">ВЫ — ШПИОН!</p>
-        <p class="text-sm text-hub-text">Вопрос вам не показан. Подслушивайте, смотрите на реакции и напишите <b>правдоподобный</b> ответ, чтобы слиться с толпой.</p>
+        <p class="text-4xl mb-1">🕵️</p>
+        <p class="text-2xl font-black text-hub-negative mb-2 font-display">ВЫ — ШПИОН</p>
+        <p class="text-xs uppercase tracking-widest text-hub-muted mb-1">Ваше задание</p>
+        <p class="text-base text-hub-text mb-3">
+          Вопроса вы не видите. Напишите <b>правдоподобный</b> ответ и не спалитесь на обсуждении.
+        </p>
+        <div v-if="topic" class="inline-block rounded-xl bg-hub-deep/70 border border-hub-negative/40 px-4 py-2">
+          <span class="text-[10px] uppercase tracking-widest text-hub-muted block">Тема категории</span>
+          <span class="font-black text-hub-text">{{ topic }}</span>
+        </div>
       </div>
       <!-- Мирные (и ведущий) -->
       <template v-else>
@@ -16,44 +23,58 @@
       </template>
     </div>
 
-    <div v-if="store.questionStatus === 'among_us_voting'" class="w-full max-w-4xl mx-auto space-y-6 mb-8">
-      <!-- Инструкция + ставки голосования -->
+    <!-- Обсуждение и голосование: ответы всех на виду, «верно/неверно» тут не существует -->
+    <div v-if="store.questionStatus === 'among_us_voting'" class="w-full max-w-5xl mx-auto space-y-5 mb-8">
       <div class="text-center">
-        <p class="text-lg font-black text-hub-text">Кто блефовал? Голосуйте!</p>
+        <p class="text-sm text-hub-muted mb-1">Вопрос был: <b class="text-hub-text">{{ store.currentQuestion.q }}</b></p>
+        <p class="text-lg font-black text-hub-text">Один из этих ответов написан вслепую. Кто блефовал?</p>
         <p class="text-xs text-hub-muted mt-1">
           Толпа угадала: голосовавшим верно <b class="text-party-lime">+{{ pts }}</b>, шпиону <b class="text-hub-negative">−{{ pts * 2 }}</b> ·
           Не угадала: шпиону <b class="text-party-lime">+{{ pts * 2 }}</b>, остальным <b class="text-hub-negative">−{{ pts }}</b>
         </p>
       </div>
-      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        <div v-for="player in store.players" :key="player.id" 
+
+      <!-- Карточка = ОТВЕТ (он главный), автор подписан снизу; клик = голос -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div v-for="player in store.players" :key="player.id"
              @click="vote(player.id)"
-             class="group relative flex flex-col items-center p-4 rounded-3xl border-2 transition-all cursor-pointer overflow-hidden"
+             class="group relative flex flex-col rounded-2xl border-2 overflow-hidden transition-all"
              :class="[
-               store.amongUsVotes[store.user?.id] === player.id ? 'bg-red-500/20 border-red-500 shadow-[0_0_30px_rgba(239,68,68,0.2)]' : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/20',
-               player.id === store.user?.id ? 'opacity-50 pointer-events-none grayscale' : ''
+               myVote === String(player.id) ? 'bg-hub-negative/20 border-hub-negative glow-pink' : 'bg-white/5 border-white/10 hover:border-white/30 hover:bg-white/10',
+               isMe(player.id) || store.isSpectator || store.amongUsResult ? 'opacity-60 pointer-events-none' : 'cursor-pointer'
              ]">
-          <img v-if="player.avatar && store.avatarIsImage(player.avatar)" :src="store.getAvatarUrl(player.avatar)" class="w-16 h-16 rounded-2xl mb-3 shadow-lg group-hover:scale-110 transition-transform" />
-          <div v-else class="w-16 h-16 rounded-2xl mb-3 bg-hub-deep flex items-center justify-center text-3xl shadow-lg">{{ player.avatar || (player.name || '?').charAt(0).toUpperCase() }}</div>
-          <span class="font-black text-xs text-center break-words w-full">{{ player.name }}</span>
-          
-          <div v-if="store.amongUsResult && player.id === store.imposterId" class="absolute inset-0 bg-red-600/40 flex items-center justify-center backdrop-blur-sm">
-             <span class="font-black text-white rotate-12 text-sm uppercase tracking-widest border-2 border-white px-2 py-0.5">ШПИОН</span>
+          <!-- Ответ -->
+          <div class="flex-1 flex items-center justify-center text-center px-4 py-6 min-h-[92px]">
+            <span v-if="answerOf(player.id)" class="text-lg md:text-xl font-black text-hub-text break-words">«{{ answerOf(player.id) }}»</span>
+            <span v-else class="text-sm text-hub-muted italic">не успел ответить</span>
           </div>
-          
-          <!-- Votes count display -->
-          <div class="mt-2 flex -space-x-2">
-             <div v-for="v in getVotesFor(player.id)" :key="v" class="w-2 h-2 rounded-full bg-red-500 border border-black shadow" />
+          <!-- Автор + голоса -->
+          <div class="flex items-center gap-2 px-3 py-2 bg-hub-deep/70 border-t border-white/5">
+            <img v-if="player.avatar && store.avatarIsImage(player.avatar)" :src="store.getAvatarUrl(player.avatar)" class="w-7 h-7 rounded-lg object-cover shrink-0" />
+            <div v-else class="w-7 h-7 rounded-lg bg-hub-solid flex items-center justify-center text-sm shrink-0">{{ player.avatar || (player.name || '?').charAt(0).toUpperCase() }}</div>
+            <span class="font-bold text-xs truncate flex-1">{{ player.name }}<span v-if="isMe(player.id)" class="text-hub-muted"> (вы)</span></span>
+            <div class="flex -space-x-1 shrink-0">
+              <div v-for="v in votesFor(player.id)" :key="v" class="w-2.5 h-2.5 rounded-full bg-hub-negative border border-black/60" />
+            </div>
+          </div>
+
+          <div v-if="store.amongUsResult && String(player.id) === String(store.imposterId)"
+               class="absolute inset-0 bg-hub-negative/40 flex items-center justify-center anim-pop-in">
+            <span class="font-black text-white rotate-12 text-base uppercase tracking-widest border-2 border-white px-3 py-1">Шпион</span>
           </div>
         </div>
       </div>
-      
-      <div v-if="store.amongUsTimerState" class="p-6 rounded-3xl bg-slate-900/50 border border-white/5 flex flex-col items-center gap-4">
-         <span class="text-xs font-black uppercase tracking-[0.3em] text-slate-500">Время на обсуждение</span>
-         <div class="text-4xl font-mono font-black" :class="displayTimeLeft < 10 ? 'text-red-500 animate-pulse' : 'text-slate-200'">
-            {{ formatTime(displayTimeLeft) }}
-         </div>
-         <!-- Пауза/продолжение — на пульте ведущего внизу (единое место управления) -->
+
+      <p v-if="!store.amongUsResult && !store.isSpectator && !isHost && !myVote" class="text-center text-xs text-hub-muted animate-pulse">
+        Обсуждайте вслух, потом ткните в подозрительный ответ
+      </p>
+
+      <div v-if="store.amongUsTimerState" class="p-4 rounded-2xl bg-hub-deep/60 border border-white/5 flex flex-col items-center gap-2">
+        <span class="text-[10px] font-black uppercase tracking-[0.3em] text-hub-muted">Время на обсуждение</span>
+        <div class="text-3xl font-mono font-black" :class="displayTimeLeft < 10 ? 'text-hub-negative animate-pulse' : 'text-hub-text'">
+          {{ formatTime(displayTimeLeft) }}
+        </div>
+        <!-- Пауза/продолжение и вскрытие — на пульте ведущего внизу (единое место управления) -->
       </div>
     </div>
   </div>
@@ -71,6 +92,16 @@ const pts = computed(() => store.currentQuestion?.points || 0)
 // Приватная роль из privateReveal (вне broadcast): шпион узнаёт себя, ведущий — имя шпиона
 const amImposter = computed(() => !isHost.value && store.privateReveal?.kind === 'imposter')
 const hostReveal = computed(() => store.privateReveal?.kind === 'imposter_host' ? store.privateReveal : null)
+const topic = computed(() => store.privateReveal?.topic || null)
+
+// Ключи textAnswers/amongUsVotes — строки (объект), id игрока — число из БД
+const isMe = (id) => String(id) === String(store.user?.id)
+const answerOf = (id) => store.textAnswers?.[id] ?? store.textAnswers?.[String(id)] ?? null
+const myVote = computed(() => {
+  const v = store.amongUsVotes?.[store.user?.id]
+  return v == null ? null : String(v)
+})
+const votesFor = (id) => Object.values(store.amongUsVotes || {}).filter(v => String(v) === String(id)).length
 
 // Живой отсчёт: пока таймер «running», считаем остаток от endsAt (сервер тикает не сам);
 // на паузе показываем сохранённый timeLeft
@@ -87,14 +118,8 @@ const displayTimeLeft = computed(() => {
 })
 
 const vote = (targetId) => {
-  if (store.isSpectator) return
-  if (store.questionStatus === 'among_us_voting') {
-    emit('vote', targetId)
-  }
-}
-
-const getVotesFor = (pId) => {
-  return Object.values(store.amongUsVotes || {}).filter(v => v === pId).length
+  if (store.isSpectator || isMe(targetId) || store.amongUsResult) return
+  if (store.questionStatus === 'among_us_voting') emit('vote', targetId)
 }
 
 const formatTime = (s) => {

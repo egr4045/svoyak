@@ -34,6 +34,10 @@ class PotatoHandler extends BaseQuestionHandler {
     if (gameState.timers.potatoBomb) clearTimeout(gameState.timers.potatoBomb);
     const ms = 15000 + Math.floor(Math.random() * 25000); // 15–40с, скрыто от игроков
     gameState.timers.potatoBomb = setTimeout(() => this.startFizzing(gameState, io), ms);
+    // Ведущему дедлайн виден: он ведёт темп и должен знать, когда рванёт, чтобы
+    // подгонять и красиво передать перед самым взрывом. Игрокам — по-прежнему нет.
+    // performerId=null ⇒ адресат один: сокет ведущего (см. emitPrivateReveal).
+    gameState.setPrivateReveal(null, null, { kind: 'potato_host', bombAt: Date.now() + ms }, io);
   }
 
   // Таймер вышел: картошка зашипела. Ещё FIZZ_MS можно передать.

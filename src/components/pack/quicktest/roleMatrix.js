@@ -67,17 +67,21 @@ export const TYPES = {
   glitch: { roles: ['host', 'answering', 'player', 'spectator'], phases: BUZZER_PHASES, seed: (p, { phase, players }) => { p.glitchSeed = 42; buzzerSeed(p, phase, players) } },
   among_us: {
     roles: ['host', 'imposter', 'player', 'spectator'],
-    phases: [{ status: 'text_inputting', label: 'ввод' }, { status: 'text_judging', label: 'проверка' }, { status: 'among_us_voting', label: 'голосование' }, { status: 'among_us_voting', label: 'итог', tag: 'result' }],
+    // Фазы проверки нет: ведущий не судит ответы шпиона, из ввода сразу в обсуждение
+    phases: [{ status: 'text_inputting', label: 'ввод' }, { status: 'among_us_voting', label: 'обсуждение' }, { status: 'among_us_voting', label: 'итог', tag: 'result' }],
     seed: (p, { phase, question, players }) => {
+      // Ответы всех видны в обсуждении — на них и голосуют
+      const answers = () => players.reduce((acc, pl, i) => { acc[pl.id] = ['Ответ Ани', 'Ответ Бори', 'Ответ Вити'][i] || `Ответ ${i + 1}`; return acc }, {})
       // Механика «Хамелеона»: imposterId публикуется только в итоге; роль — приватно
       if (phase.tag === 'result') {
         p.imposterId = players[1].id
         p.amongUsResult = 'crew_win'; p.showAnswer = true
+        p.textAnswers = answers()
         p.amongUsVotes = { [players[0].id]: players[1].id, [players[2] ? players[2].id : players[0].id]: players[1].id }
       } else {
-        p._secret = { kind: 'imposter' }
+        p._secret = { kind: 'imposter', topic: 'Загадки человечества' }
         p._imposterId = players[1].id // для маппинга роли «шпион» в applyIdentity
-        if (phase.status === 'text_judging') p.textAnswers = { [players[0].id]: 'Ответ Ани', [players[1].id]: 'Ответ Бори' }
+        p.textAnswers = phase.status === 'among_us_voting' ? answers() : { [players[0].id]: 'Ответ Ани' }
         if (phase.status === 'among_us_voting') { p.amongUsTimerState = { status: 'running', endsAt: Date.now() + 120000, timeLeft: 120 }; p.amongUsVotes = { [players[0].id]: players[1].id } }
       }
     }

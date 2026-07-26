@@ -40,6 +40,16 @@ describe('PotatoHandler', () => {
     expect(gs.state.potatoTurnId).toBe('p1');
   });
 
+  test('дедлайн бомбы уходит только ведущему, в общий стейт не попадает', () => {
+    handler.afterSelect(gs, { io });
+    const [target, perfPayload, hostPayload] = gs.setPrivateReveal.mock.calls[0];
+    expect(target).toBeNull();          // адресата-игрока нет ⇒ получит один ведущий
+    expect(perfPayload).toBeNull();
+    expect(hostPayload.kind).toBe('potato_host');
+    expect(hostPayload.bombAt).toBe(Date.now() + BOMB_MS);
+    expect(JSON.stringify(gs.state)).not.toContain('bombAt');
+  });
+
   test('таймер не рвёт сразу, а включает шипение', () => {
     handler.afterSelect(gs, { io });
     jest.advanceTimersByTime(BOMB_MS);

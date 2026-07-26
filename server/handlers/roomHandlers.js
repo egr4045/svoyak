@@ -80,7 +80,9 @@ function handleRoomEvents(io, socket, user) {
       });
 
       socket.on('host:selectQuestion', ({ catIdx, qIdx }) => {
-        room.selectQuestion(catIdx, qIdx);
+        // Вопрос не открылся (нет такой ячейки / уже отыграна) — не запускаем таймеры
+        // старого вопроса повторно: activeCell в этот момент ещё указывает на него.
+        if (!room.selectQuestion(catIdx, qIdx)) return;
         room.afterSelect({ io }); // типам с таймером/рассылкой при открытии (напр. картошка)
         room.broadcast(io);
       });

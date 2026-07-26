@@ -129,6 +129,17 @@ describe('GameState spectators & maxPlayers', () => {
     expect(game.state.players.find(p => p.id === 'p1').score).toBe(300);
   });
 
+  test('selectQuestion с несуществующей ячейкой не роняет процесс и не открывает вопрос', () => {
+    // Координаты приходят с клиента: раньше кривой индекс кидал TypeError и убивал
+    // весь Node-процесс вместе со всеми комнатами.
+    const game = new GameState('SEL', { id: 'host', username: 'Host' });
+    game.startGame();
+    expect(() => game.selectQuestion(99, 0)).not.toThrow();
+    expect(() => game.selectQuestion(0, 99)).not.toThrow();
+    expect(game.selectQuestion(99, 0)).toBeFalsy();
+    expect(game.state.activeCell).toBeNull();
+  });
+
   test('promoteSpectator is blocked mid-question (symmetric to demotePlayer)', () => {
     const game = new GameState('SPEC', { id: 'host', username: 'Host' }, { maxPlayers: 4 });
     game.addPlayer({ id: 'p1', username: 'P1' });

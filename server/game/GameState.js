@@ -346,8 +346,10 @@ class GameState {
   }
 
   selectQuestion(catIdx, qIdx) {
-    const q = this.state.board[catIdx].questions[qIdx];
-    if (q.answered) return;
+    // Координаты приходят с клиента, поэтому им нельзя доверять: без этой проверки
+    // один кривой индекс роняет ВЕСЬ процесс (а с ним и все остальные комнаты).
+    const q = this.state.board?.[catIdx]?.questions?.[qIdx];
+    if (!q || q.answered) return;
     
     this.state.activeCell = { catIdx, qIdx };
     this.state.showAnswer = false;
@@ -366,6 +368,7 @@ class GameState {
 
     const handler = HANDLERS[q.type] || HANDLERS['quiz'];
     handler.onSelect(this, q);
+    return true;
   }
 
   getHandler() {
