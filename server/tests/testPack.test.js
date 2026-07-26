@@ -108,6 +108,24 @@ describe('встроенный пак «Тестовый»', () => {
     });
   });
 
+  test('встроенный пак не портится между комнатами', () => {
+    // Он лежит в памяти процесса один на всех, в отличие от паков из БД. Если игра начнёт
+    // мутировать его напрямую (а не свою копию roundsData), все следующие комнаты получат
+    // доску с уже отвеченными вопросами — и это не воспроизведётся до рестарта сервера.
+    const a = withPlayers();
+    a.selectQuestion(0, 0);
+    a.closeQuestion();
+    expect(a.state.board[0].questions[0].answered).toBe(true);
+
+    const b = withPlayers();
+    expect(b.state.board[0].questions[0].answered).toBeFalsy();
+    expect(getBuiltinPack('builtin:test').rounds[0].categories[0].questions[0].answered).toBeFalsy();
+
+    // и после resetGame в первой комнате доска снова чистая
+    a.resetGame();
+    expect(a.state.roundsData[0].categories[0].questions[0].answered).toBeFalsy();
+  });
+
   test('тексты полей описывают сами себя — иначе пак теряет смысл', () => {
     // Витрина обязана объяснять, какое поле куда попадает: у вопросов с текстом
     // в «q» должно упоминаться имя поля
