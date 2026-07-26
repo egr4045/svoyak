@@ -45,8 +45,11 @@
           </div>
 
           <!-- Кнопки номиналов -->
+          <!-- Без v-memo: он кэширует узлы ПОЗИЦИОННО, а строки бывают разной длины
+               (5 вопросов в одной категории, 6 в другой) — кэш смещался и применял состояние
+               чужой строки: отвеченные ячейки оставались кликабельными, а нетронутые гасли.
+               Доска — максимум ~30 кнопок, мемоизация тут ничего не экономит. -->
           <button v-for="(q, qIdx) in category.questions" :key="qIdx"
-                  v-memo="[q.answered, isHighlighted(catIdx, qIdx)]"
                   @click="handleQuestionClick(catIdx, qIdx)"
                   :disabled="q.answered"
                   :class="['board-cell relative rounded-xl flex items-center justify-center font-black h-full w-full select-none',
@@ -72,7 +75,6 @@
           </div>
           <div class="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1">
             <button v-for="(q, qIdx) in category.questions" :key="qIdx"
-                    v-memo="[q.answered, isHighlighted(catIdx, qIdx)]"
                     @click="handleQuestionClick(catIdx, qIdx)"
                     :disabled="q.answered"
                     :class="['shrink-0 w-[68px] h-12 rounded-xl flex items-center justify-center font-black select-none',
