@@ -8,6 +8,7 @@ export const usePacksStore = defineStore('packs', {
   state: () => ({
     packs: [],       // мета: { id, name, createdAt, expiresAt }
     playedPacks: [], // чужие паки, которые я прошёл вживую: { id, name, playedAt }
+    builtin: [],     // встроенные паки (id вида builtin:*): доступны всем, не редактируются
     loading: false
   }),
 
@@ -25,7 +26,11 @@ export const usePacksStore = defineStore('packs', {
       this.loading = true
       try {
         const res = await fetch(this._base(), { headers: this._headers(false) })
-        if (res.ok) this.packs = (await res.json()).packs || []
+        if (res.ok) {
+          const body = await res.json()
+          this.packs = body.packs || []
+          this.builtin = body.builtin || []
+        }
       } finally { this.loading = false }
     },
 

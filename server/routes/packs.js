@@ -6,6 +6,7 @@ const AdmZip = require('adm-zip');
 const db = require('../db/database');
 const { authenticateToken } = require('../auth');
 const { migratePack } = require('../game/packMigrate');
+const { listBuiltinPacks } = require('../game/builtinPacks');
 
 const router = express.Router();
 router.use(express.json({ limit: '25mb' })); // база64 медиа при загрузке/импорте
@@ -70,11 +71,12 @@ pruneExpired();
 const rowToMeta = (r) => { const base = r.touched_at || r.created_at; return { id: r.id, name: r.name, createdAt: r.created_at, expiresAt: base + TTL_MS }; };
 
 // --- CRUD ----------------------------------------------------------------
-// Список моих паков (без тела data)
+// Список моих паков (без тела data) + встроенные паки, доступные всем.
+// Встроенные отдаём этим же запросом, чтобы кабинет не делал третий поход на сервер.
 router.get('/', (req, res) => {
   db.all('SELECT id, name, created_at FROM packs WHERE owner_id = ? ORDER BY created_at DESC', [req.user.platformId], (err, rows) => {
     if (err) return res.status(500).json({ error: 'DB error' });
-    res.json({ packs: (rows || []).map(rowToMeta) });
+    res.json({ packs: (rows || []).map(rowToMeta), builtin: listBuiltinPacks() });
   });
 });
 

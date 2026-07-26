@@ -8,6 +8,7 @@ const { authRouter, JWT_SECRET, authenticateToken } = require('./auth');
 const roomManager = require('./managers/RoomManager');
 const handleRoomEvents = require('./handlers/roomHandlers');
 const { packsRouter, loadPackForRoom, MEDIA_ROOT } = require('./routes/packs');
+const { isBuiltinPackId, getBuiltinPack, listBuiltinPacks } = require('./game/builtinPacks');
 const db = require('./db/database');
 const { migratePack } = require('./game/packMigrate');
 
@@ -41,11 +42,19 @@ app.post('/api/rooms', authenticateToken, async (req, res) => {
   if (!req.user.platformId) return res.status(403).json({ error: 'Hub session required' });
   // Кастомный пак ведущего (если выбран) — иначе встроенный дефолт
   let pack = null;
-  if (req.body?.packId) {
-    pack = await loadPackForRoom(req.body.packId, req.user.platformId);
+  let packId = null;
+  const requestedPack = req.body?.packId;
+  if (isBuiltinPackId(requestedPack)) {
+    // Встроенный пак лежит в коде, а не в БД. packId сознательно оставляем null:
+    // на нём висит запись «прошёл пак», а строки в packs для builtin:* не существует.
+    pack = getBuiltinPack(requestedPack);
     if (!pack) return res.status(404).json({ error: 'Pack not found' });
+  } else if (requestedPack) {
+    pack = await loadPackForRoom(requestedPack, req.user.platformId);
+    if (!pack) return res.status(404).json({ error: 'Pack not found' });
+    packId = requestedPack;
   }
-  const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers, pack, packId: req.body?.packId || null });
+  const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers, pack, packId });
   res.status(201).json({ roomCode: code });
 });
 

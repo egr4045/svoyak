@@ -19,6 +19,9 @@
             <span class="text-xs uppercase tracking-widest text-hub-muted font-black">Пак вопросов</span>
             <select v-model="selectedPack" class="hub-input font-bold min-w-[220px]">
               <option value="">Встроенный пак</option>
+              <!-- Встроенные паки живут в коде сервера (id вида builtin:*): играть можно всем,
+                   редактировать нельзя — в «Моих паках» они не появляются -->
+              <option v-for="p in packs.builtin" :key="p.id" :value="p.id">{{ p.name }}</option>
               <optgroup v-if="packs.packs.length" label="Мои паки">
                 <option v-for="p in packs.packs" :key="p.id" :value="p.id">{{ p.name }}</option>
               </optgroup>
