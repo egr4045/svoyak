@@ -1,5 +1,8 @@
 <template>
-  <div class="fixed bottom-4 left-4 z-40 select-none">
+  <!-- Без собственного позиционирования: раньше панель висела `fixed bottom-4 left-4 z-40`,
+       то есть ровно в полосе футера (у него тот же z-40, но он выше по DOM) — и накрывала
+       левые карточки игроков и край пульта ведущего. Теперь её место выбирает вьюха. -->
+  <div class="select-none">
     <!-- Нет платформенной сессии / SDK -->
     <div v-if="!platform.available || !platform.me"
          class="panel-glass px-4 py-2 text-xs text-hub-muted shadow-lg">
@@ -33,8 +36,9 @@
                 :title="camOn ? 'Выключить камеру' : 'Включить камеру'">
           📷
         </button>
-        <span class="text-xs text-hub-muted font-bold px-1" :title="CALL_LABEL">
-          {{ CALL_LABEL }} · {{ platform.voice.participants.length }}
+        <!-- В шапке места немного: на узких экранах оставляем только счётчик участников -->
+        <span class="text-xs text-hub-muted font-bold px-1 whitespace-nowrap" :title="CALL_LABEL">
+          <span class="hidden lg:inline">{{ CALL_LABEL }} · </span>👥 {{ platform.voice.participants.length }}
         </span>
         <!-- Ошибка даже в подключённом состоянии (напр. микрофон недоступен) -->
         <span v-if="platform.voice.error" class="text-xs text-hub-warning px-1" :title="platform.voice.error">⚠ {{ platform.voice.error }}</span>
@@ -43,7 +47,7 @@
           ⚠ {{ platform.deviceError }}
         </span>
         <button v-if="isHost" @click="inviteParty"
-                class="hub-btn text-xs !text-hub-accent"
+                class="hub-btn text-xs !text-hub-accent hidden md:inline-flex"
                 title="Отправить приглашение всем участникам текущего звонка">
           🎮 Позвать всех в игру
         </button>

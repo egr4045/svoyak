@@ -222,8 +222,12 @@ body {
   33% { transform: translate(6vw, -4vh) scale(1.15); }
   66% { transform: translate(-5vw, 5vh) scale(.9); }
 }
+/* Замах уменьшен с 1.8 до 1.35: цифра рисуется во всю ширину панели вопроса, и при 1.8
+   она вылезала за её края. Панель скроллируемая, поэтому вылет добавлялся в scrollHeight
+   и на каждую секунду отсчёта выскакивали полосы прокрутки. Контейнер цифры вдобавок
+   клипует остаток — см. ActiveQuestion. */
 @keyframes kf-countdown-pop {
-  0% { opacity: 0; transform: scale(1.8); }
+  0% { opacity: 0; transform: scale(1.35); }
   25% { opacity: 1; transform: scale(1); }
   85% { opacity: 1; transform: scale(.94); }
   100% { opacity: 0; transform: scale(.85); }

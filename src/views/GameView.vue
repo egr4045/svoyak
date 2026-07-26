@@ -19,7 +19,10 @@
           👁 Вы наблюдатель
         </span>
       </div>
-      <div class="flex gap-2 md:gap-3 shrink-0">
+      <div class="flex items-center gap-2 md:gap-3 shrink-0">
+        <!-- Панель звонка живёт здесь, а не плавает над футером: внизу она накрывала
+             карточки игроков и левый край пульта ведущего -->
+        <VoiceBar />
         <button v-if="isHost" @click="store.resetGame" class="hub-btn text-xs md:text-sm">Сброс раунда</button>
         <button @click="leaveRoom" class="hub-btn text-xs md:text-sm !text-hub-negative">Выйти в хаб</button>
       </div>
@@ -41,7 +44,6 @@
     </footer>
 
     <EventLog />
-    <VoiceBar />
     <FunPanel />
     <EffectsOverlay />
     <Spotlight />
@@ -80,6 +82,7 @@ import FunPanel from '../components/host/FunPanel.vue'
 import EffectsOverlay from '../components/EffectsOverlay.vue'
 import Spotlight from '../components/Spotlight.vue'
 import { useVoiceFloor } from '../composables/useVoiceFloor'
+import { useAutoVoice } from '../composables/useAutoVoice'
 
 const store = useGameStore()
 const platform = usePlatformStore()
@@ -108,12 +111,13 @@ onMounted(() => {
 })
 
 // F5 прямо в игре: голос переподключаем только после первого gameStateUpdated,
-// когда isSpectator уже отражает реальную роль (иначе наблюдатель войдёт с включённым микрофоном)
-const voiceJoined = ref(false)
+// когда isSpectator уже отражает реальную роль (иначе наблюдатель войдёт с включённым микрофоном).
+// Повторами занимается useAutoVoice — одноразовая попытка молча оставляла игрока без звука.
+useAutoVoice(store, platform)
+const activityReported = ref(false)
 watch(() => store.host, (h) => {
-  if (h && !voiceJoined.value) {
-    voiceJoined.value = true
-    platform.joinVoice(store.roomCode, { spectator: store.isSpectator })
+  if (h && !activityReported.value) {
+    activityReported.value = true
     platform.setActivity(store.roomCode)
   }
 }, { immediate: true })

@@ -1,6 +1,12 @@
 <template>
-  <div v-if="store.activeCell" class="absolute inset-0 z-50 flex items-center justify-center p-0 sm:p-2 md:p-4 bg-black/85 sm:rounded-3xl anim-fade-in">
-    <div class="panel-glass border-hub-accent/40 p-3 sm:p-4 md:p-6 max-w-4xl w-full shadow-2xl flex flex-col text-center relative max-h-full sm:max-h-[92dvh] h-full sm:h-auto overflow-y-auto rounded-none sm:rounded-[14px] anim-pop-in">
+  <div v-if="store.activeCell" class="absolute inset-0 z-50 flex items-center justify-center p-0 sm:p-2 md:p-4 bg-black/85 sm:rounded-3xl overflow-hidden anim-fade-in">
+    <!-- Высота меряется от ЭТОГО оверлея (max-h-full), а не от экрана: оверлей накрывает только
+         зону доски, под ним ещё футер с пультом и игроками. С `92dvh` панель получалась выше
+         своего контейнера и вылезала за края — заодно и pop-in масштабировал её наружу. -->
+    <!-- overflow-x-hidden обязателен: голый `overflow-y-auto` по спеке превращает overflow-x
+         из visible в auto, и любая анимация с scale>1 (цифра отсчёта стартует со scale(1.8)
+         во всю ширину) вылезала за бок и вызывала горизонтальный скроллбар на каждую секунду. -->
+    <div class="panel-glass border-hub-accent/40 p-3 sm:p-4 md:p-6 max-w-4xl w-full h-full max-h-full shadow-2xl flex flex-col text-center relative overflow-y-auto overflow-x-hidden rounded-none sm:rounded-[14px] anim-pop-in">
       
       <!-- Управление ведущего целиком живёт в HostPanel (пульт внизу) — здесь только контент -->
       <div class="inline-block px-4 py-1.5 rounded-lg bg-hub-deep text-hub-accent font-medium text-sm mb-6 border border-hub-border mx-auto">
@@ -87,15 +93,20 @@
       <!-- Блок баззера / чтения / ответа — рендерится для ЛЮБОГО типа вопроса (включая glitch) -->
       <div v-if="['reading','buzzer_countdown','buzzer_active','buzzer_results','answering'].includes(store.questionStatus)" class="w-full">
         
-        <div class="mb-4 h-auto min-h-[48px] flex justify-center items-center w-full">
+        <!-- Полоса статуса держит постоянную высоту: без неё гигантская цифра отсчёта
+             раздувала панель на ~140px, из-за чего на три секунды выскакивал скроллбар
+             и всё под ним прыгало. Резерв равен высоте самого крупного состояния. -->
+        <div class="mb-4 min-h-[96px] md:min-h-[128px] flex justify-center items-center w-full">
           <div v-if="store.questionStatus === 'reading'" class="text-hub-muted flex flex-col items-center gap-2 animate-pulse mt-4">
             <Mic class="w-8 h-8 text-hub-accent mb-2" />
             <span class="text-xl">Ведущий читает вопрос…</span>
             <span v-if="!isHost" class="text-sm text-hub-muted mt-2">Приготовьтесь! Скоро начнётся отсчёт.</span>
           </div>
 
-          <div v-else-if="store.questionStatus === 'buzzer_countdown'" class="text-center w-full relative h-32 md:h-40 flex items-center justify-center">
-             <div :key="countdownNumber" class="text-[8rem] md:text-[12rem] font-black font-display text-hub-warning absolute inset-0 flex items-center justify-center pointer-events-none text-glow-amber anim-countdown">
+          <!-- Высота ровно совпадает с резервом полосы выше — иначе отсчёт двигает вёрстку.
+               overflow-hidden ловит остаток замаха анимации, чтобы он не попадал в прокрутку. -->
+          <div v-else-if="store.questionStatus === 'buzzer_countdown'" class="text-center w-full relative h-24 md:h-32 flex items-center justify-center overflow-hidden">
+             <div :key="countdownNumber" class="text-[5.5rem] md:text-[7rem] leading-none font-black font-display text-hub-warning absolute inset-0 flex items-center justify-center pointer-events-none text-glow-amber anim-countdown">
                {{ countdownNumber > 0 ? countdownNumber : 'ГОУ!' }}
              </div>
           </div>

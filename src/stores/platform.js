@@ -156,10 +156,24 @@ export const usePlatformStore = defineStore('platform', {
       }
     },
 
+    // SDK ещё договаривается с сервером: и init(), и adoptSession() дёргают resume(), поэтому
+    // на старте страницы подключение почти всегда «в полёте». Решать по такому состоянию нельзя —
+    // ветка «пришли из звонка хаба» не сработает, мы уйдём в свой игровой рум вторым соединением,
+    // и оба конца окажутся в разных комнатах: у себя «звонок есть», у друзей нас нет.
+    async _settleVoice(call, timeoutMs = 8000) {
+      const deadline = Date.now() + timeoutMs
+      let state = call.getState ? call.getState() : {}
+      while (state.status === 'connecting' && Date.now() < deadline) {
+        await new Promise(r => setTimeout(r, 150))
+        state = call.getState ? call.getState() : {}
+      }
+      return state
+    },
+
     async _joinVoiceOnce(call, roomCode, targetKey, spectator, embed) {
       this.voice.error = null // прошлая неудача не должна блокировать повторный вход
       try {
-        const state = call.getState ? call.getState() : {}
+        const state = await this._settleVoice(call)
         if (state.callKey === targetKey) {
           call.setEmbedded?.(embed)
           return true // уже в нужной комнате

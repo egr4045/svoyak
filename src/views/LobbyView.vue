@@ -110,7 +110,9 @@
       </div>
     </template>
 
-    <VoiceBar />
+    <!-- Плавающей панели звонка тут больше нет: она накрывала нижнюю панель и дублировала
+         её же кнопки микрофона и камеры. Всё нужное лобби показывает своими средствами —
+         тайлы участников, статус «вы не в звонке» и устройства в нижней панели. -->
   </div>
 </template>
 
@@ -120,7 +122,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { usePlatformStore } from '../stores/platform'
 import { useCallInvite } from '../platform/useCallInvite'
-import VoiceBar from '../components/VoiceBar.vue'
+import { useAutoVoice } from '../composables/useAutoVoice'
 import CallTile from '../components/CallTile.vue'
 
 const store = useGameStore()
@@ -149,12 +151,12 @@ const freeSeats = computed(() => Math.min(Math.max(0, store.maxPlayers - store.p
 // На телефоне тайлы меньше, иначе в ряд влезает один
 const tileMin = computed(() => (store.players.length + 1) > 6 ? 130 : 170)
 
-// Голос + активность + репорт аватара — после первого gameStateUpdated (host появился)
-const voiceJoined = ref(false)
+// Голос — с автоповтором (см. useAutoVoice), активность и аватар — один раз по появлению host
+const { retryNow } = useAutoVoice(store, platform)
+const activityReported = ref(false)
 watch(() => store.host, (h) => {
-  if (h && !voiceJoined.value) {
-    voiceJoined.value = true
-    platform.joinVoice(store.roomCode, { spectator: store.isSpectator })
+  if (h && !activityReported.value) {
+    activityReported.value = true
     platform.setActivity(store.roomCode)
   }
 }, { immediate: true })
@@ -184,7 +186,7 @@ const voiceMissing = computed(() => {
 })
 
 function joinVoiceNow() {
-  platform.joinVoice(store.roomCode, { spectator: store.isSpectator })
+  retryNow() // не ждать очередного автоповтора
 }
 function callToVoice() {
   platform.invitePartyToGame(store.roomCode)
