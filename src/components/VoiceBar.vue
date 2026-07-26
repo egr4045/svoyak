@@ -38,6 +38,10 @@
         </span>
         <!-- Ошибка даже в подключённом состоянии (напр. микрофон недоступен) -->
         <span v-if="platform.voice.error" class="text-xs text-hub-warning px-1" :title="platform.voice.error">⚠ {{ platform.voice.error }}</span>
+        <!-- Браузер не дал устройство: это чинит сам игрок, поэтому текст видимый, а не в title -->
+        <span v-if="platform.deviceError" class="text-xs text-hub-negative font-bold px-1 max-w-[260px] leading-tight">
+          ⚠ {{ platform.deviceError }}
+        </span>
         <button v-if="isHost" @click="inviteParty"
                 class="hub-btn text-xs !text-hub-accent"
                 title="Отправить приглашение всем участникам текущего звонка">

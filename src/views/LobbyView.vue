@@ -1,149 +1,115 @@
 <template>
-  <div class="h-screen w-full flex flex-col items-center justify-center p-6 md:p-8">
-    <div v-if="!store.connected" class="text-xl text-hub-muted animate-pulse">Подключение к серверу…</div>
-
-    <div v-else class="w-full max-w-4xl panel-glass p-6 md:p-8">
-      <!-- Шапка: без кода комнаты (вход через приглашения хаба) -->
-      <div class="flex justify-between items-center border-b border-hub-border pb-5 mb-6">
-        <div class="flex items-center gap-3">
-          <span class="text-2xl">🔒</span>
-          <div>
-            <h2 class="text-2xl font-black text-hub-accent leading-tight">Приватная комната</h2>
-            <p class="text-xs text-hub-muted">Зовите друзей через виджет справа внизу</p>
-          </div>
-        </div>
-        <div class="flex gap-4 items-center">
-          <span v-if="isHost" class="text-hub-muted text-sm">Вы — Ведущий</span>
-          <button @click="leaveRoom" class="hub-btn text-sm !text-hub-negative">Выйти в хаб</button>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <!-- Участники -->
-        <div>
-          <h3 class="text-lg font-bold mb-3">
-            Участники <span class="text-hub-muted">({{ store.players.length }}/{{ store.maxPlayers }} мест)</span>
-          </h3>
-          <div class="space-y-2">
-            <div v-for="p in store.players" :key="p.id"
-                 @contextmenu="showParticipantMenu(p, $event, 'player')"
-                 class="flex items-center justify-between hub-card p-2.5 transition-colors"
-                 :class="{ 'border-hub-accent': speakingIds.has(p.platformId) }">
-              <div class="flex items-center gap-3">
-                <div class="w-9 h-9 bg-hub-deep rounded-lg flex items-center justify-center font-bold overflow-hidden border"
-                     :class="speakingIds.has(p.platformId) ? 'border-hub-accent' : 'border-hub-border'">
-                  <img v-if="p.avatar && store.avatarIsImage(p.avatar)" :src="store.getAvatarUrl(p.avatar)" class="w-full h-full object-cover">
-                  <span v-else-if="p.avatar" class="text-lg">{{ p.avatar }}</span>
-                  <span v-else>{{ p.name.charAt(0).toUpperCase() }}</span>
-                </div>
-                <span class="font-medium" :class="{ 'text-hub-muted': !p.connected }">{{ p.name }}</span>
-                <span v-if="voiceOf(p)" class="text-xs" :title="voiceOf(p).micOn ? 'В голосовом чате' : 'Микрофон выключен'">{{ voiceOf(p).micOn ? '🎙' : '🔇' }}</span>
-              </div>
-              <div class="text-sm flex items-center gap-2">
-                <span v-if="p.failedAssets" class="text-hub-warning" :title="`Не загрузилось файлов: ${p.failedAssets}`">⚠ {{ p.failedAssets }}</span>
-                <span v-if="!p.loadedAssets" class="text-hub-warning animate-pulse">Загрузка…</span>
-                <span v-else class="text-hub-positive font-bold">Готов</span>
-              </div>
-            </div>
-            <div v-if="store.players.length === 0" class="text-hub-muted italic text-sm py-2">Ожидание игроков…</div>
-          </div>
-
-          <!-- Наблюдатели -->
-          <div v-if="store.spectators.length || store.isSpectator" class="mt-6">
-            <h3 class="text-base font-bold mb-2 text-hub-muted">👁 Наблюдатели ({{ store.spectators.length }})</h3>
-            <div class="space-y-2">
-              <div v-for="s in store.spectators" :key="s.id"
-                   @contextmenu="showParticipantMenu(s, $event, 'spectator')"
-                   class="flex items-center justify-between hub-card p-2">
-                <div class="flex items-center gap-2.5">
-                  <div class="w-7 h-7 bg-hub-deep rounded-lg flex items-center justify-center text-sm font-bold overflow-hidden border border-hub-border">
-                    <img v-if="s.avatar && store.avatarIsImage(s.avatar)" :src="store.getAvatarUrl(s.avatar)" class="w-full h-full object-cover">
-                    <span v-else-if="s.avatar">{{ s.avatar }}</span>
-                    <span v-else>{{ s.name.charAt(0).toUpperCase() }}</span>
-                  </div>
-                  <span class="text-sm" :class="{ 'text-hub-muted': !s.connected }">{{ s.name }}</span>
-                  <span v-if="voiceOf(s)" class="text-xs">{{ voiceOf(s).micOn ? '🎙' : '🔇' }}</span>
-                </div>
-                <div>
-                  <button v-if="s.id === store.user?.id" @click="store.takeSeat()"
-                          :disabled="store.seatsFree === 0"
-                          class="text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors"
-                          :class="store.seatsFree > 0
-                            ? 'text-hub-accent border-hub-accent/40 hover:bg-hub-accent hover:text-white'
-                            : 'text-hub-muted border-hub-border cursor-not-allowed'">
-                    {{ store.seatsFree > 0 ? '🎮 Занять место' : 'Мест нет' }}
-                  </button>
-                  <button v-else-if="isHost" @click="store.promoteSpectator(s.id)"
-                          :disabled="store.seatsFree === 0"
-                          class="hub-btn text-xs disabled:opacity-40">В игроки</button>
-                </div>
-              </div>
-            </div>
-            <div v-if="store.isSpectator" class="mt-3 flex flex-col gap-2 items-start">
-              <p class="text-xs text-hub-muted italic">
-                Вы наблюдатель: видите игру и участвуете в голосовом чате, но не отвечаете на вопросы.
-              </p>
-              <button @click="leaveRoom" class="hub-btn text-xs">🚪 Не хочу смотреть — в хаб (другая игра)</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- Ваша карточка + старт -->
-        <div class="hub-card p-6 flex flex-col justify-between">
-          <div>
-            <h3 class="text-lg font-bold mb-4">Вы в игре</h3>
-            <div class="flex items-center gap-4 mb-6">
-              <div class="w-16 h-16 bg-hub-deep rounded-2xl border border-hub-border overflow-hidden flex items-center justify-center">
-                <img v-if="myAvatar && store.avatarIsImage(myAvatar)" :src="store.getAvatarUrl(myAvatar)" class="w-full h-full object-cover">
-                <span v-else-if="myAvatar" class="text-3xl">{{ myAvatar }}</span>
-                <span v-else class="text-2xl font-black text-hub-muted">{{ (store.user?.username || '?').charAt(0).toUpperCase() }}</span>
-              </div>
-              <div class="flex flex-col">
-                <span class="text-hub-muted text-[10px] uppercase font-black tracking-widest mb-1">Никнейм</span>
-                <b class="text-xl text-hub-text">{{ store.user?.username }}</b>
-                <span class="text-[11px] text-hub-muted">Аватар — из профиля MyGame Hub</span>
-              </div>
-            </div>
-
-            <!-- Предзагрузка контента -->
-            <div v-if="!myAssetsLoaded" class="w-full bg-hub-deep rounded-full h-3 mb-2 overflow-hidden">
-              <div class="bg-hub-accent h-3 transition-all duration-300" :style="{ width: loadProgress + '%' }"></div>
-            </div>
-            <p v-if="!myAssetsLoaded" class="text-sm text-hub-muted">Загрузка ресурсов игры… {{ loadProgress }}%</p>
-            <p v-else-if="failedAssets" class="text-sm text-hub-warning font-bold">⚠ {{ failedAssets }} файл(ов) не загрузилось — часть медиа может не сыграть</p>
-            <p v-else class="text-sm text-hub-positive font-bold">Ресурсы загружены</p>
-          </div>
-
-          <div class="mt-8">
-            <!-- Голос — инфраструктура игры: без него не слышно вопросов. Гейт мягкий: показываем
-                 проблему и даём её решить, но старт не блокируем (микрофоны падают по-разному). -->
-            <div v-if="!platform.voiceConnected && platform.voiceSupported && platform.voiceSecure"
-                 class="mb-4 p-3 rounded-lg border border-hub-warning/40 bg-hub-warning/10">
-              <p class="text-sm text-hub-warning font-bold mb-2">🎙 Вы не в голосовом чате</p>
-              <p class="text-xs text-hub-muted mb-3">Игра идёт голосом — без него вы не услышите вопросы.</p>
-              <!-- Именно кнопка, а не авто-вход: запрос микрофона без жеста пользователя браузер
-                   может отклонить сам -->
-              <button @click="joinVoiceNow" class="hub-btn text-xs w-full">🎙 Войти в голосовой чат</button>
-            </div>
-            <div v-else-if="isHost && voiceMissing.length"
-                 class="mb-4 p-3 rounded-lg border border-hub-warning/40 bg-hub-warning/10">
-              <p class="text-sm text-hub-warning font-bold mb-1">Не в голосе: {{ voiceMissing.map(p => p.name).join(', ') }}</p>
-              <p class="text-xs text-hub-muted mb-3">Они не услышат вопросы.</p>
-              <button @click="callToVoice" class="hub-btn text-xs w-full">🎮 Позвать в звонок</button>
-            </div>
-
-            <button v-if="isHost" @click="startGame" :disabled="!allReady"
-                    class="hub-btn-primary w-full py-4 text-lg uppercase tracking-wide"
-                    :class="{ 'opacity-50 cursor-not-allowed': !allReady }">
-              {{ !allReady ? 'Ожидание загрузки игроков…' : (voiceMissing.length ? 'Начать игру всё равно' : 'Начать игру') }}
-            </button>
-            <div v-else class="text-center text-hub-muted italic bg-hub-deep/40 p-4 rounded-lg border border-hub-border">
-              Ожидание старта игры ведущим…
-            </div>
-          </div>
-        </div>
-      </div>
+  <div class="h-dvh w-full flex flex-col p-3 md:p-6 gap-3">
+    <div v-if="!store.connected" class="flex-1 flex items-center justify-center text-xl text-hub-muted animate-pulse">
+      Подключение к серверу…
     </div>
+
+    <template v-else>
+      <!-- Шапка -->
+      <div class="shrink-0 flex justify-between items-center gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <span class="text-2xl shrink-0">🔒</span>
+          <div class="min-w-0">
+            <h2 class="text-xl md:text-2xl font-black font-display text-party-gradient leading-tight truncate">Лобби Свояка</h2>
+            <p class="text-xs text-hub-muted truncate">{{ store.players.length }}/{{ store.maxPlayers }} мест · зовите друзей через виджет справа внизу</p>
+          </div>
+        </div>
+        <div class="flex gap-2 md:gap-3 items-center shrink-0">
+          <span v-if="isHost" class="hidden sm:inline text-hub-muted text-sm">Вы — Ведущий</span>
+          <button @click="leaveRoom" class="hub-btn text-xs md:text-sm !text-hub-negative">Выйти в хаб</button>
+        </div>
+      </div>
+
+      <!-- Браузер не дал микрофон/камеру — самая частая причина «ничего не работает» -->
+      <div v-if="platform.deviceError" class="shrink-0 panel-glass border-hub-negative/60 px-4 py-3 flex items-start gap-3 anim-rise-in">
+        <span class="text-xl shrink-0">🚫</span>
+        <div class="min-w-0">
+          <p class="font-bold text-hub-negative text-sm">Нет доступа к устройству</p>
+          <p class="text-xs text-hub-muted">{{ platform.deviceError }}</p>
+        </div>
+        <button @click="platform.deviceError = null" class="ml-auto hub-btn text-xs shrink-0">Понятно</button>
+      </div>
+
+      <!-- Не в звонке: без голоса игра не работает -->
+      <div v-else-if="!platform.voiceConnected && platform.voiceSupported && platform.voiceSecure"
+           class="shrink-0 panel-glass border-hub-warning/50 px-4 py-3 flex items-center gap-3">
+        <span class="text-xl shrink-0">🎙</span>
+        <div class="min-w-0 flex-1">
+          <p class="font-bold text-hub-warning text-sm">Вы не в голосовом чате</p>
+          <p class="text-xs text-hub-muted">Игра идёт голосом — без него вы не услышите вопросы.</p>
+        </div>
+        <button @click="joinVoiceNow" class="hub-btn-primary text-xs shrink-0">Войти в звонок</button>
+      </div>
+
+      <!-- Сетка участников: собственно «групповой звонок» -->
+      <div class="flex-1 min-h-0 overflow-y-auto">
+        <div class="grid gap-2 md:gap-3" :style="{ gridTemplateColumns: `repeat(auto-fill, minmax(${tileMin}px, 1fr))` }">
+          <CallTile v-for="p in store.players" :key="p.id"
+                    :participant="p"
+                    :is-me="String(p.id) === String(store.user?.id)"
+                    :is-host-tile="String(p.id) === String(store.host?.id)" />
+          <!-- Ведущий — тоже человек в звонке, но он не игрок и в players его нет -->
+          <CallTile v-if="hostTile" :participant="hostTile" :is-me="isHost" :is-host-tile="true" :show-ready="false" />
+          <!-- Пустые места, чтобы было видно, сколько ещё влезет -->
+          <div v-for="n in freeSeats" :key="'free' + n"
+               class="rounded-2xl border-2 border-dashed border-hub-border/50 flex items-center justify-center text-hub-muted/50 text-xs"
+               style="aspect-ratio: 4 / 3">
+            свободно
+          </div>
+        </div>
+
+        <!-- Наблюдатели — компактной лентой -->
+        <div v-if="store.spectators.length" class="mt-3">
+          <p class="text-[10px] uppercase tracking-widest text-hub-muted font-black mb-1.5">👁 Наблюдатели ({{ store.spectators.length }})</p>
+          <div class="grid gap-2" style="grid-template-columns: repeat(auto-fill, minmax(84px, 1fr))">
+            <CallTile v-for="s in store.spectators" :key="s.id"
+                      :participant="s" :is-me="String(s.id) === String(store.user?.id)"
+                      compact :show-ready="false" />
+          </div>
+          <div v-if="store.isSpectator" class="mt-2 flex flex-wrap gap-2 items-center">
+            <span class="text-xs text-hub-muted italic">Вы наблюдатель: видите игру и говорите в звонке, но не отвечаете.</span>
+            <button v-if="store.seatsFree > 0" @click="store.takeSeat()" class="hub-btn text-xs !text-hub-accent">🎮 Занять место</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Нижняя панель: свои устройства, готовность, старт -->
+      <div class="shrink-0 panel-glass px-3 py-2.5 flex flex-wrap items-center gap-2 md:gap-3">
+        <template v-if="platform.voiceConnected">
+          <button @click="toggleMic"
+                  class="w-11 h-11 rounded-xl border flex items-center justify-center text-xl transition-colors"
+                  :class="micOn ? 'bg-hub-accent/25 border-hub-accent/60 text-hub-accent' : 'bg-hub-negative/25 border-hub-negative/60 text-hub-negative'"
+                  :title="micOn ? 'Выключить микрофон' : 'Включить микрофон'">{{ micOn ? '🎙' : '🔇' }}</button>
+          <button @click="toggleCam"
+                  class="w-11 h-11 rounded-xl border flex items-center justify-center text-xl transition-colors"
+                  :class="camOn ? 'bg-hub-accent/25 border-hub-accent/60 text-hub-accent' : 'bg-hub-hover border-hub-border text-hub-muted'"
+                  :title="camOn ? 'Выключить камеру' : 'Включить камеру'">📷</button>
+          <span v-if="!camOn" class="text-xs text-hub-muted hidden sm:inline">Включите камеру — вас увидят</span>
+        </template>
+
+        <!-- Прелоад ресурсов -->
+        <div class="flex items-center gap-2 min-w-[150px] flex-1 sm:flex-none">
+          <div v-if="!myAssetsLoaded" class="flex-1 bg-hub-deep rounded-full h-2 overflow-hidden min-w-[80px]">
+            <div class="bg-hub-accent h-2 transition-all duration-300" :style="{ width: loadProgress + '%' }"></div>
+          </div>
+          <span v-if="!myAssetsLoaded" class="text-xs text-hub-muted shrink-0">{{ loadProgress }}%</span>
+          <span v-else-if="failedAssets" class="text-xs text-hub-warning font-bold">⚠ {{ failedAssets }} медиа не загрузилось</span>
+          <span v-else class="text-xs text-hub-positive font-bold">Готов</span>
+        </div>
+
+        <div class="ml-auto flex items-center gap-2">
+          <button v-if="isHost && voiceMissing.length" @click="callToVoice" class="hub-btn text-xs">
+            🎮 Позвать в звонок ({{ voiceMissing.length }})
+          </button>
+          <button v-if="isHost" @click="startGame" :disabled="!allReady"
+                  class="hub-btn-primary py-3 px-6 uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed">
+            {{ !allReady ? 'Ждём загрузки…' : (voiceMissing.length ? 'Начать всё равно' : 'Начать игру') }}
+          </button>
+          <span v-else class="text-hub-muted italic text-sm">Ожидание старта ведущим…</span>
+        </div>
+      </div>
+    </template>
+
     <VoiceBar />
   </div>
 </template>
@@ -153,23 +119,35 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useGameStore } from '../stores/game'
 import { usePlatformStore } from '../stores/platform'
-import { showParticipantMenu } from '../platform/contextMenu'
 import { useCallInvite } from '../platform/useCallInvite'
 import VoiceBar from '../components/VoiceBar.vue'
+import CallTile from '../components/CallTile.vue'
 
 const store = useGameStore()
 const platform = usePlatformStore()
 const router = useRouter()
 const route = useRoute()
 
-const speakingIds = computed(() => {
-  const set = new Set()
-  platform.voice.participants.forEach(p => { if (p.speaking) set.add(p.accountId) })
-  return set
+// Свои устройства (тайлы участников читают состояние сами через CallTile)
+const micOn = computed(() => platform.localParticipant?.micOn ?? false)
+const camOn = computed(() => platform.localParticipant?.camOn ?? false)
+function toggleMic() { platform.setMic(!micOn.value) }
+function toggleCam() { platform.setCam(!camOn.value) }
+
+// Ведущий не входит в players, но он в звонке и его надо видеть в сетке
+const hostTile = computed(() => {
+  const h = store.host
+  if (!h) return null
+  return { id: h.id, name: h.username || h.name || 'Ведущий', avatar: h.avatar || null,
+           platformId: h.platformId || null, connected: h.connected !== false, loadedAssets: true }
 })
-function voiceOf(p) {
-  return p?.platformId ? platform.participantFor(p.platformId) : null
-}
+
+// Свободные места показываем плитками-заглушками, но не больше разумного (сетка не должна
+// превращаться в поле пустых квадратов при maxPlayers=16 и двух игроках)
+const freeSeats = computed(() => Math.min(Math.max(0, store.maxPlayers - store.players.length), 4))
+
+// На телефоне тайлы меньше, иначе в ряд влезает один
+const tileMin = computed(() => (store.players.length + 1) > 6 ? 130 : 170)
 
 // Голос + активность + репорт аватара — после первого gameStateUpdated (host появился)
 const voiceJoined = ref(false)

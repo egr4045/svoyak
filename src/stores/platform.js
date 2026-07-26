@@ -53,6 +53,9 @@ export const usePlatformStore = defineStore('platform', {
     me: null,             // { accountId, displayName } из social.getMe()
     spectateIntent: false, // пришли по ?spectate=1
     platformAuthError: null, // текст ошибки моста для HomeView
+    // Отказ браузера в микрофоне/камере. Отдельно от voice.error (тот про сам звонок):
+    // это чинит пользователь у себя в браузере, поэтому текст — инструкция, а не констатация.
+    deviceError: null,
     voice: {
       status: 'idle',     // idle | connecting | connected
       kind: null,         // conv | game
@@ -227,11 +230,43 @@ export const usePlatformStore = defineStore('platform', {
       o.inviteCount = 0
     },
 
+    // Микрофон/камера. Ошибку НЕ глотаем: SDK обновляет своё состояние только при успехе,
+    // поэтому при отказе в доступе кнопка молча «не работает» — именно так это и выглядело
+    // для игроков. Показываем причину и что с ней делать.
     async setMic(on) {
-      try { await getCall()?.setMic(on) } catch { /* ок */ }
+      const err = await this._toggleDevice('setMic', on, 'микрофону')
+      if (!err) this.deviceError = null
+      return !err
     },
     async setCam(on) {
-      try { await getCall()?.setCam(on) } catch { /* ок */ }
+      const err = await this._toggleDevice('setCam', on, 'камере')
+      if (!err) this.deviceError = null
+      return !err
+    },
+
+    // Возвращает текст ошибки или null. Различаем «запретили» и «нет устройства» —
+    // это принципиально разные действия пользователя.
+    async _toggleDevice(method, on, what) {
+      const call = getCall()
+      if (!call) return null
+      try {
+        await call[method](on)
+        return null
+      } catch (e) {
+        // Выключить устройство обычно не может упасть по правам — не пугаем зря
+        if (!on) return null
+        const name = e?.name || ''
+        const msg = name === 'NotAllowedError' || name === 'SecurityError'
+          ? `Браузер не дал доступ к ${what}. Разрешите его в адресной строке (значок 🎥/🎙) и нажмите ещё раз.`
+          : name === 'NotFoundError' || name === 'DevicesNotFoundError'
+            ? `Устройство не найдено: проверьте, подключён ли ${what === 'микрофону' ? 'микрофон' : 'камера'}.`
+            : name === 'NotReadableError'
+              ? `Устройство занято другой программой — закройте её и попробуйте снова.`
+              : `Не удалось включить доступ к ${what}.`
+        console.warn(`[platform] ${method} failed:`, e)
+        this.deviceError = msg
+        return msg
+      }
     },
     setVolume(accountId, v) {
       try { getCall()?.setVolume(accountId, v) } catch { /* ок */ }
