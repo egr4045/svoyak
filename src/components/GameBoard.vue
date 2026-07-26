@@ -1,5 +1,8 @@
 <template>
-  <div class="flex flex-col gap-2 w-full h-full max-w-7xl mx-auto overflow-hidden">
+  <!-- Без overflow-hidden: подсветка ячейки рисуется псевдоэлементом с inset:-3px и свечением
+       на 26px, и у крайних ячеек его срезало ровной линией по границе. Обрезка осталась
+       снаружи, на обёртке в GameView, — за пределы игровой зоны доска всё равно не выйдет. -->
+  <div class="flex flex-col gap-2 w-full h-full max-w-7xl mx-auto">
 
     <!-- Сплэш экран раунда -->
     <div v-if="store.questionStatus === 'showing_round_splash'" class="flex-1 flex flex-col items-center justify-center p-4 md:p-8 panel-glass shadow-2xl relative overflow-hidden anim-pop-in">

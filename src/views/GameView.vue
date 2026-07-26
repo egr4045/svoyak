@@ -30,7 +30,8 @@
 
     <!-- Основная зона: доска (всегда вписывается в остаток экрана) -->
     <main class="flex-1 min-h-0 w-full relative">
-      <div class="h-full p-2 md:p-4 overflow-hidden">
+      <!-- Отступ заодно даёт запас под свечение крайних ячеек доски -->
+      <div class="h-full p-3 md:p-5 overflow-hidden">
         <GameBoard />
       </div>
       <ActiveQuestion />
