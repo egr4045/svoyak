@@ -125,8 +125,8 @@ watch(() => store.isSpectator, (isSpec, was) => {
 // Опоздавшие в звонок подхватываются и в середине игры
 useCallInvite(store, platform, isHost)
 
-// Режиссура голоса: в фазе ответа все, кроме отвечающего, глушат себе микрофон (режим задаёт ведущий)
-useVoiceFloor(store, platform, isHost)
+// Режиссура громкости: в фазе ответа остальных слышно тише (режим задаёт ведущий)
+useVoiceFloor(store, platform)
 
 function leaveRoom() {
   store.logout();

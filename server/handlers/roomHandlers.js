@@ -166,12 +166,14 @@ function handleRoomEvents(io, socket, user) {
         room.broadcast(io);
       });
 
-      // Режиссура голоса: ведущий переключает режим, глушатся клиенты сами (см. GameState.voiceMode)
+      // Режиссура громкости: ведущий переключает режим, приглушают у себя сами клиенты
+      // (см. GameState.voiceMode и src/composables/useVoiceFloor.js)
       socket.on('host:setVoiceMode', (mode) => {
-        if (!['auto', 'open', 'silent'].includes(mode)) return;
+        if (!['auto', 'open', 'host_only'].includes(mode)) return;
         room.state.voiceMode = mode;
-        const label = mode === 'auto' ? 'по ходу игры' : mode === 'open' ? 'говорят все' : 'тишина в студии';
-        room.addLog(`🎙 Режим голоса: ${label}.`, 'info');
+        const label = mode === 'auto' ? 'по ходу игры'
+          : mode === 'open' ? 'всех слышно ровно' : 'остальные приглушены';
+        room.addLog(`🎙 Громкость: ${label}.`, 'info');
         room.broadcast(io);
       });
 

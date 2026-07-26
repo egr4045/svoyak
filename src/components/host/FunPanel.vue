@@ -12,7 +12,7 @@
 
       <!-- Режиссура голоса: всегда на виду, это не «прикол», а рабочий инструмент ведущего -->
       <div class="mb-3 pb-3 border-b border-hub-border">
-        <p class="text-[10px] uppercase tracking-widest text-hub-muted font-black mb-1.5">🎙 Кто говорит</p>
+        <p class="text-[10px] uppercase tracking-widest text-hub-muted font-black mb-1.5">🎙 Кого слышно громче</p>
         <div class="flex gap-1">
           <button v-for="m in VOICE_MODES" :key="m.key" @click="setVoiceMode(m.key)"
                   class="hub-btn text-[11px] flex-1 py-2" :title="m.hint"
@@ -85,12 +85,12 @@ const SOUNDS = [
   { key: 'applause', icon: '👏', label: 'Овации' },
 ]
 
-// Режимы голоса. Глушение — самоглушение клиентов (SDK не умеет принудительный мьют),
-// поэтому в подсказке честно: игрок может включиться обратно.
+// Режимы громкости. Это ПРИГЛУШЕНИЕ чужого воспроизведения у каждого слушателя, а не мьют:
+// микрофоны не трогаем, смех и реакции остаются фоном — просто тише.
 const VOICE_MODES = [
-  { key: 'auto', label: '🎯 По игре', hint: 'Во время ответа молчат все, кроме отвечающего' },
-  { key: 'open', label: '🔊 Все', hint: 'Говорят все и всегда' },
-  { key: 'silent', label: '🤫 Тишина', hint: 'Говорит только ведущий' },
+  { key: 'auto', label: '🎯 По игре', hint: 'Во время ответа остальных слышно тише — отвечающего не перекрикивают' },
+  { key: 'open', label: '🔊 Ровно', hint: 'Никого не приглушаем, все на равных' },
+  { key: 'host_only', label: '📢 Ведущий', hint: 'Остальных слышно тише всё время — когда нужно объяснить правила' },
 ]
 const voiceHint = computed(() => VOICE_MODES.find(m => m.key === store.voiceMode)?.hint || '')
 function setVoiceMode(mode) { store.emitAction('host:setVoiceMode', mode) }
