@@ -6,10 +6,17 @@
     <!-- Крупно по центру: отвечающий (или исполнитель) — главный человек момента, его должно
          быть видно как в телевизоре. Поверх модалки вопроса (у неё z-50), чуть выше центра,
          чтобы не налезать на пульт ведущего внизу. -->
-    <div v-if="hero" class="pointer-events-none fixed left-1/2 -translate-x-1/2 top-[42%] -translate-y-1/2 z-[70] w-[min(78vw,620px)]">
+    <!-- Ширина ограничена и по высоте экрана (78dvh при 16:9 ≈ 44dvh высоты): на низких
+         окнах тайл иначе съедал всё поле и упирался в пульт ведущего. -->
+    <div v-if="hero" class="pointer-events-none fixed left-1/2 -translate-x-1/2 top-[42%] -translate-y-1/2 z-[70] w-[min(78vw,620px,78dvh)]">
       <div class="relative rounded-3xl overflow-hidden border-4 shadow-2xl bg-hub-deep"
            :class="accent.border"
            style="aspect-ratio: 16 / 9">
+        <!-- Тайл закрывает собой текст вопроса, поэтому вопрос переезжает на него:
+             подключившийся посреди ответа всё равно понимает, о чём речь. -->
+        <div v-if="caption" class="absolute inset-x-0 top-0 z-20 px-4 py-2 bg-gradient-to-b from-black/85 to-transparent">
+          <p class="text-xs md:text-sm font-bold text-hub-text/90 text-center line-clamp-2">{{ caption }}</p>
+        </div>
         <!-- Камера героя; пока кадров нет (или камера выключена) — крупный аватар под ней -->
         <div class="absolute inset-0 flex items-center justify-center">
           <img v-if="hero.avatar && store.avatarIsImage(hero.avatar)" :src="store.getAvatarUrl(hero.avatar)"
@@ -62,6 +69,10 @@ const heroSpeaking = computed(() => {
   const pid = hero.value?.platformId
   return pid ? !!platform.participantFor(pid)?.speaking : false
 })
+
+// Подпись сверху — только там, где вопрос публичный. В шоу (крокодил/алиас) текст вопроса
+// это и есть загаданное слово, показывать его залу нельзя.
+const caption = computed(() => heroRole.value === 'answering' ? (store.currentQuestion?.q || null) : null)
 
 const accent = computed(() => heroRole.value === 'performer'
   ? { border: 'border-party-pink/70', text: 'text-party-pink', ring: 'ring-party-pink/60', label: 'показывает' }
