@@ -98,10 +98,12 @@
         </div>
 
         <div class="ml-auto flex items-center gap-2">
-          <button v-if="isHost && voiceMissing.length" @click="callToVoice" class="hub-btn text-xs">
+          <button v-if="isHost && voiceMissing.length && !store.isTestRoom" @click="callToVoice" class="hub-btn text-xs">
             🎮 Позвать в звонок ({{ voiceMissing.length }})
           </button>
-          <button v-if="isHost" @click="startGame" :disabled="!allReady"
+          <!-- В тестовой комнате ведущий может быть ботом — старт всё равно за тестером
+               (сервер разрешает это по room.test, см. roomHandlers room:start) -->
+          <button v-if="isHost || store.isTestRoom" @click="startGame" :disabled="!allReady"
                   class="hub-btn-primary py-3 px-6 uppercase tracking-wide disabled:opacity-50 disabled:cursor-not-allowed">
             {{ !allReady ? 'Ждём загрузки…' : (voiceMissing.length ? 'Начать всё равно' : 'Начать игру') }}
           </button>
@@ -141,7 +143,8 @@ const hostTile = computed(() => {
   const h = store.host
   if (!h) return null
   return { id: h.id, name: h.username || h.name || 'Ведущий', avatar: h.avatar || null,
-           platformId: h.platformId || null, connected: h.connected !== false, loadedAssets: true }
+           platformId: h.platformId || null, connected: h.connected !== false, loadedAssets: true,
+           isBot: h.isBot === true }
 })
 
 // Свободные места показываем плитками-заглушками, но не больше разумного (сетка не должна
@@ -260,7 +263,10 @@ function leaveRoom() {
 }
 
 function startGame() {
-  if (isHost.value && (allReady.value || store.players.length === 0)) {
+  // В тестовой комнате ведущий — бот, поэтому старт разрешён и тестеру-игроку
+  // (сервер проверяет то же самое по room.test, см. roomHandlers room:start)
+  if (!isHost.value && !store.isTestRoom) return
+  if (allReady.value || store.players.length === 0) {
     store.socket.emit('room:start')
   }
 }

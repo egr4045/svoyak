@@ -56,6 +56,7 @@ class RoomManager {
       const r = this.rooms.get(key);
       if (r && !r.hasConnectedMembers()) {
         r.clearTimers();
+        r.botDriver?.detach(); // тестовая комната: снять таймеры ботов вместе с комнатой
         this.rooms.delete(key);
         console.log(`[RoomManager] Пустая комната ${key} удалена.`);
       }

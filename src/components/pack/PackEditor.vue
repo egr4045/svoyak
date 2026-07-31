@@ -119,7 +119,7 @@
                   <span @click.stop="duplicateQuestion(cat, qi)" class="text-[12px] text-hub-text hover:text-hub-accent cursor-pointer" title="Дублировать">⧉</span>
                   <span @click.stop="cat.questions.splice(qi, 1)" class="text-[12px] text-hub-negative hover:brightness-150 cursor-pointer" title="Удалить">🗑</span>
                 </div>
-                <span @click.stop="openTest(cat, qi)" class="absolute bottom-0.5 right-1 text-[11px] text-hub-accent hover:scale-125 transition-transform cursor-pointer" title="Быстрый тест">▶</span>
+                <span @click.stop="testCell(ci, qi)" class="absolute bottom-0.5 right-1 text-[11px] text-hub-accent hover:scale-125 transition-transform cursor-pointer" title="Сыграть этот вопрос с ботами">▶</span>
               </button>
               <!-- Добавить ячейку -->
               <button @click="addQuestion(cat)" class="w-24 h-[68px] rounded-lg border border-dashed border-hub-border text-hub-muted hover:text-hub-accent hover:border-hub-accent text-2xl font-thin">+</button>
@@ -150,15 +150,15 @@
 
     <!-- Редактор одного вопроса -->
     <div v-if="editing" class="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center p-4" @click.self="closeEditing">
-      <div class="panel-glass w-full p-6 max-h-[92vh] overflow-y-auto" :class="testing ? 'max-w-6xl' : 'max-w-lg'">
+      <div class="panel-glass w-full p-6 max-h-[92vh] overflow-y-auto max-w-lg">
         <div class="flex items-center justify-between mb-4 gap-2">
           <h3 class="font-black text-hub-accent">Вопрос за {{ editQ.points }}</h3>
           <div class="flex gap-2">
-            <button @click="testing = !testing" class="hub-btn text-xs" :class="testing ? '!text-hub-accent' : ''">🧪 {{ testing ? 'Скрыть тест' : 'Тест' }}</button>
+            <button @click="testEditing" class="hub-btn text-xs" title="Открыть этот вопрос в настоящей игре с ботами">🧪 Тест с ботами</button>
             <button @click="closeEditing" class="hub-btn text-xs">Готово</button>
           </div>
         </div>
-        <div :class="testing ? 'grid grid-cols-1 lg:grid-cols-2 gap-6 items-start' : ''">
+        <div>
         <div class="flex flex-col gap-3">
           <div class="flex gap-2">
             <label class="flex-1">
@@ -281,9 +281,6 @@
 
           <button @click="deleteQuestion" class="hub-btn text-xs !text-hub-negative self-start mt-2">🗑 Удалить вопрос</button>
         </div>
-        <div v-if="testing" class="min-w-0">
-          <QuickTestPanel :question="editQ" :interactive="true" />
-        </div>
         </div>
       </div>
     </div>
@@ -292,10 +289,10 @@
 
 <script setup>
 import { reactive, ref, computed, onMounted, watch, onBeforeUnmount, nextTick } from 'vue'
+import { useRouter } from 'vue-router'
 import { usePacksStore } from '../../stores/packs'
 import { useGameStore } from '../../stores/game'
 import { getPlatform } from '../../platform/sdk'
-import QuickTestPanel from './quicktest/QuickTestPanel.vue'
 import TemplateWizard from './TemplateWizard.vue'
 import { stubForType } from './templates'
 import LintPanel from './LintPanel.vue'
@@ -306,6 +303,7 @@ import MediaShelf from './MediaShelf.vue'
 const props = defineProps({ packId: { type: String, required: true } })
 const emit = defineEmits(['close', 'saved'])
 const packs = usePacksStore()
+const router = useRouter()
 
 // 8 типов ядра: полное имя, короткий бейдж для ячейки, цвет.
 // Особенности (глитч/фрагмент/письменно/ставки, режимы шоу и «все отвечают») — модификаторы вопроса.
@@ -400,7 +398,6 @@ const showsMedia = (q) => q.type === 'quiz' || (q.type === 'show' && q.showMode 
 const local = reactive({ name: '', data: { rounds: [] } })
 const activeRound = ref(0)
 const editing = ref(null) // { cat, qi }
-const testing = ref(false) // режим быстрого теста в модалке
 const saving = ref(false)
 const msg = ref(''); const msgErr = ref(false)
 const showWizard = ref(false)
@@ -550,7 +547,6 @@ function applySnapshot(idx) {
   local.data = JSON.parse(historyStack.value[idx])
   // editing.value.cat — ссылка на СТАРОЕ дерево, после замены local.data она протухла бы
   editing.value = null
-  testing.value = false
   activeRound.value = Math.min(activeRound.value, Math.max(0, local.data.rounds.length - 1))
   nextTick(() => { applyingHistory = false })
 }
@@ -663,9 +659,28 @@ function addQuestion(cat) {
   cat.questions.push(q)
   openQuestion(cat, cat.questions.length - 1)
 }
-function openQuestion(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]); testing.value = false }
-function openTest(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]); testing.value = true }
-function closeEditing() { editing.value = null; testing.value = false }
+function openQuestion(cat, qi) { editing.value = { cat, qi }; ensureTypeFields(cat.questions[qi]) }
+function closeEditing() { editing.value = null }
+
+// Проверка вопроса = НАСТОЯЩАЯ игра с ботами по одной этой ячейке (пак режется на сервере
+// до одного вопроса: открылся → отыгрался → game_over). Никаких моков: тот же движок,
+// те же таймеры, те же хендлеры. Правки сохраняем перед стартом — сервер читает пак из БД.
+async function testCell(ci, qi) {
+  try {
+    clearTimeout(saveTimer)
+    await autosave()
+    const code = await game.createTestRoom(props.packId, 'player', { r: activeRound.value, c: ci, q: qi })
+    router.push({ name: 'lobby', params: { id: code } })
+  } catch (e) { flash(e.message || 'Не удалось запустить тест', true) }
+}
+function testEditing() {
+  if (!editing.value) return
+  const ci = round.value?.categories?.indexOf(editing.value.cat) ?? -1
+  if (ci < 0) return
+  const qi = editing.value.qi
+  closeEditing()
+  testCell(ci, qi)
+}
 
 // Телепорт из линтера/карты пака прямо к проблемной ячейке
 function jumpToIssue(iss) {

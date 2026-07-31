@@ -48,7 +48,9 @@
 
           <!-- Текст -->
           <div class="text-center w-full">
-            <div class="text-[10px] md:text-xs font-black uppercase text-hub-muted truncate mb-0.5" :class="{ 'opacity-50': !player.connected }">{{ player.name }}</div>
+            <div class="text-[10px] md:text-xs font-black uppercase text-hub-muted truncate mb-0.5" :class="{ 'opacity-50': !player.connected }">
+              <span v-if="player.isBot" title="Бот тестового режима">🤖 </span>{{ player.name }}
+            </div>
             <div :key="'s' + player.id + '-' + player.score"
                  :class="['font-display text-lg md:text-2xl font-black anim-score-bump',
                           player.score > 0 ? 'text-hub-warning' : player.score < 0 ? 'text-hub-negative' : 'text-hub-text']">

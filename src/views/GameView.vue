@@ -18,6 +18,9 @@
         <span v-if="store.isSpectator" class="hidden sm:inline text-xs font-black uppercase tracking-widest text-hub-text bg-hub-hover border border-hub-border rounded-full px-3 py-1">
           👁 Вы наблюдатель
         </span>
+        <span v-if="store.isTestRoom" class="hidden sm:inline text-xs font-black uppercase tracking-widest text-hub-warning bg-hub-hover border border-hub-border rounded-full px-3 py-1">
+          🧪 Тест с ботами
+        </span>
       </div>
       <div class="flex items-center gap-2 md:gap-3 shrink-0">
         <!-- Панель звонка живёт здесь, а не плавает над футером: внизу она накрывала

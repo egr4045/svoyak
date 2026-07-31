@@ -62,7 +62,11 @@ function handleRoomEvents(io, socket, user) {
     });
 
     socket.on('room:start', () => {
-      if (room.state.host.id !== user.id) return;
+      // В тестовой комнате ведущим может быть бот — тогда «Начать» жмёт тестер,
+      // хотя host-события ему не привязаны (см. bots/testRoom.js)
+      const isRoomHost = String(room.state.host.id) === String(user.id);
+      const isTester = !!room.test && String(room.test.testerId) === String(user.id);
+      if (!isRoomHost && !isTester) return;
       room.startGame();
       room.broadcast(io);
     });

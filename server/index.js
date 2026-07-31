@@ -8,7 +8,8 @@ const { authRouter, JWT_SECRET, authenticateToken } = require('./auth');
 const roomManager = require('./managers/RoomManager');
 const handleRoomEvents = require('./handlers/roomHandlers');
 const { packsRouter, loadPackForRoom, MEDIA_ROOT } = require('./routes/packs');
-const { isBuiltinPackId, getBuiltinPack, listBuiltinPacks } = require('./game/builtinPacks');
+const { isBuiltinPackId, getBuiltinPack, listBuiltinPacks, BUILTIN_TEST_PACK } = require('./game/builtinPacks');
+const { createTestRoom } = require('./bots/testRoom');
 const db = require('./db/database');
 const { migratePack } = require('./game/packMigrate');
 
@@ -55,6 +56,25 @@ app.post('/api/rooms', authenticateToken, async (req, res) => {
     packId = requestedPack;
   }
   const code = roomManager.createRoom(req.user, { maxPlayers: req.body?.maxPlayers, pack, packId });
+  res.status(201).json({ roomCode: code });
+});
+
+// Тестовый прогон: комната с ботами. Тестер садится на любое место — 'host' (боты играют,
+// судит он) или 'player' (ведущий тоже бот, тестер играет). packId в GameState всегда null,
+// поэтому прогон не пишет «прошёл пак». `only` режет пак до одной ячейки (кнопка ▶ в редакторе).
+app.post('/api/rooms/test', authenticateToken, async (req, res) => {
+  if (!req.user.platformId) return res.status(403).json({ error: 'Hub session required' });
+  const seat = req.body?.seat === 'host' ? 'host' : 'player';
+  const requestedPack = req.body?.packId || BUILTIN_TEST_PACK;
+
+  let pack;
+  if (isBuiltinPackId(requestedPack)) pack = getBuiltinPack(requestedPack);
+  else pack = await loadPackForRoom(requestedPack, req.user.platformId);
+  if (!pack) return res.status(404).json({ error: 'Pack not found' });
+
+  const rounds = Array.isArray(pack) ? pack : pack.rounds;
+  const code = createTestRoom({ tester: req.user, rounds, seat, only: req.body?.only, io });
+  if (!code) return res.status(400).json({ error: 'Question not found' });
   res.status(201).json({ roomCode: code });
 });
 

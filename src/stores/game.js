@@ -107,6 +107,9 @@ export const useGameStore = defineStore('game', {
       return state.spectators.some(s => String(s.id) === String(state.user.id))
     },
     seatsFree: (state) => Math.max(0, state.maxPlayers - state.players.length),
+    // Тестовый прогон определяем по самим участникам: isBot едет внутри уже зеркалируемых
+    // players/host, поэтому новый broadcast-ключ (и риск рассинхрона BROADCAST_KEYS) не нужен.
+    isTestRoom: (state) => !!state.host?.isBot || state.players.some(p => p.isBot),
     // Единый поиск участника по id (игрок ИЛИ наблюдатель) — используется в
     // Question-компонентах (Poker/Sketch и новых типах). Раньше вызывался, но не был определён.
     getPlayerById: (state) => (id) =>
@@ -171,6 +174,23 @@ export const useGameStore = defineStore('game', {
         body: JSON.stringify({ maxPlayers: maxPlayers || 8, ...(packId ? { packId } : {}) })
       });
       if (!res.ok) throw new Error('Create room failed');
+      const data = await res.json();
+      this.roomCode = data.roomCode;
+      return this.roomCode;
+    },
+
+    // Тестовый прогон: комната с ботами. seat — на чьё место садится тестер ('player' —
+    // ведущий тоже бот). only ({r,c,q}) режет пак до одного вопроса (кнопка ▶ в редакторе).
+    async createTestRoom(packId, seat, only) {
+      const res = await fetch(`${this.API_URL}/api/rooms/test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.token}`
+        },
+        body: JSON.stringify({ seat: seat === 'host' ? 'host' : 'player', ...(packId ? { packId } : {}), ...(only ? { only } : {}) })
+      });
+      if (!res.ok) throw new Error('Не удалось запустить тестовую игру');
       const data = await res.json();
       this.roomCode = data.roomCode;
       return this.roomCode;

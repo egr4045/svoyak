@@ -46,6 +46,16 @@ export const usePacksStore = defineStore('packs', {
       return res.json() // { id, name, createdAt, expiresAt, data }
     },
 
+    // Встроенный пак редактировать нельзя (он в коде сервера), но можно взять копию себе —
+    // дальше это обычный пак: правится, экспортируется, ломается как угодно.
+    async copyBuiltin(builtinId) {
+      const key = String(builtinId).replace(/^builtin:/, '')
+      const res = await fetch(`${this._base()}/builtin/${encodeURIComponent(key)}`, { headers: this._headers(false) })
+      if (!res.ok) throw new Error('Встроенный пак не найден')
+      const src = await res.json()
+      return this.createPack(`${src.name} — копия`, src.data)
+    },
+
     async createPack(name, data) {
       const res = await fetch(this._base(), {
         method: 'POST', headers: this._headers(), body: JSON.stringify({ name, data })

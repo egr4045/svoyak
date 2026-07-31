@@ -20,8 +20,9 @@
 
     <PlayerVideo v-if="platformId" :account-id="platformId" />
 
-    <!-- Не в звонке — видео тут не появится, говорим об этом прямо -->
-    <div v-if="connected && !inCall" class="absolute inset-0 z-20 flex items-end justify-center pb-8 pointer-events-none">
+    <!-- Не в звонке — видео тут не появится, говорим об этом прямо.
+         У ботов звонка нет по определению, им этот бейдж не нужен. -->
+    <div v-if="connected && !inCall && !isBot" class="absolute inset-0 z-20 flex items-end justify-center pb-8 pointer-events-none">
       <span class="text-[10px] font-black uppercase tracking-widest text-hub-warning bg-hub-deep/85 px-2 py-1 rounded-full">
         не в звонке
       </span>
@@ -31,9 +32,10 @@
     <!-- Подпись + бейджи -->
     <div class="absolute inset-x-0 bottom-0 z-20 px-2 py-1.5 flex items-center gap-1.5 bg-gradient-to-t from-black/85 to-transparent">
       <span v-if="isHostTile" title="Ведущий" class="shrink-0">👑</span>
+      <span v-if="isBot" title="Бот тестового режима" class="shrink-0">🤖</span>
       <span class="font-bold truncate" :class="compact ? 'text-[11px]' : 'text-sm'">{{ name }}</span>
       <span v-if="isMe" class="text-[9px] uppercase tracking-widest text-hub-muted font-black shrink-0">вы</span>
-      <span class="ml-auto shrink-0 text-xs" :title="micTitle">{{ micIcon }}</span>
+      <span v-if="!isBot" class="ml-auto shrink-0 text-xs" :title="micTitle">{{ micIcon }}</span>
     </div>
 
     <!-- Статус готовности (только игроки, только пока грузятся/есть проблемы) -->
@@ -65,6 +67,8 @@ const name = computed(() => props.participant.name)
 const avatar = computed(() => props.participant.avatar)
 const platformId = computed(() => props.participant.platformId || null)
 const connected = computed(() => props.participant.connected !== false)
+// Бот тестового режима: ни звонка, ни прелоада — бейджи про них только мешают
+const isBot = computed(() => props.participant.isBot === true)
 
 // Участник звонка (может отсутствовать: человек в игре, но не в голосе)
 const voice = computed(() => platformId.value ? platform.participantFor(platformId.value) : null)
@@ -76,7 +80,7 @@ const micTitle = computed(() => !inCall.value ? 'Не в голосовом ча
   : voice.value.micOn ? 'Микрофон включён' : 'Микрофон выключен')
 
 const statusBadge = computed(() => {
-  if (!props.showReady || !connected.value) return null
+  if (!props.showReady || !connected.value || isBot.value) return null
   if (props.participant.failedAssets) {
     return { text: `⚠ ${props.participant.failedAssets}`, cls: 'bg-hub-warning/90 text-black' }
   }

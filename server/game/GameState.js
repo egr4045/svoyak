@@ -171,6 +171,9 @@ class GameState {
   // Единая точка рассылки состояния комнаты (хендлеры зовут её вместо прямого emit)
   broadcast(io) {
     io.to(this.roomCode).emit('gameStateUpdated', this.slimState());
+    // Единственный хук для ботов тестового режима: они реагируют на смену состояния так же,
+    // как живой клиент — по приходу gameStateUpdated. В обычных комнатах всегда null.
+    if (this.onBroadcast) this.onBroadcast(io);
   }
 
   addLog(text, type = 'info') {
@@ -279,9 +282,12 @@ class GameState {
     }
   }
 
+  // Боты тестового режима всегда connected:true, но комнату живой не делают — иначе
+  // scheduleCleanup замкнёт накоротко и тестовая комната не умрёт никогда.
   hasConnectedMembers() {
-    if (this.state.host.connected) return true;
-    return this.state.players.some(p => p.connected) || this.state.spectators.some(s => s.connected);
+    if (this.state.host.connected && !this.state.host.isBot) return true;
+    return this.state.players.some(p => p.connected && !p.isBot)
+      || this.state.spectators.some(s => s.connected && !s.isBot);
   }
 
   startGame() {

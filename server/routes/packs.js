@@ -6,7 +6,7 @@ const AdmZip = require('adm-zip');
 const db = require('../db/database');
 const { authenticateToken } = require('../auth');
 const { migratePack } = require('../game/packMigrate');
-const { listBuiltinPacks } = require('../game/builtinPacks');
+const { listBuiltinPacks, getBuiltinPack, builtinPackName, BUILTIN_PREFIX } = require('../game/builtinPacks');
 
 const router = express.Router();
 router.use(express.json({ limit: '25mb' })); // база64 медиа при загрузке/импорте
@@ -94,6 +94,16 @@ router.get('/played', (req, res) => {
       res.json({ packs: (rows || []).map(r => ({ id: r.id, name: r.name, playedAt: r.played_at })) });
     }
   );
+});
+
+// Тело встроенного пака — чтобы его можно было посмотреть и скопировать себе.
+// Как и '/played', обязан стоять ДО '/:id'. Медиа встроенных паков лежит в постоянной
+// серверной статике (/assets/media/*), поэтому копия остаётся рабочей и экспортируется в ZIP.
+router.get('/builtin/:key', (req, res) => {
+  const id = BUILTIN_PREFIX + req.params.key;
+  const pack = getBuiltinPack(id);
+  if (!pack) return res.status(404).json({ error: 'Pack not found' });
+  res.json({ id, name: builtinPackName(id), data: { rounds: migratePack(pack.rounds) } });
 });
 
 // Полный пак (легаси-типы мигрируются на лету — редактор всегда видит новый формат)

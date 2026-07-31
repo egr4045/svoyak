@@ -44,6 +44,45 @@
         <p class="text-hub-muted text-xs mt-4">Кто не поместится — станет наблюдателем. Друзей позовёте через виджет друзей внизу справа после создания комнаты.</p>
       </section>
 
+      <!-- Тестовый режим: настоящая игра с ботами вместо предпросмотра.
+           Тот же движок, те же таймеры — просто вместо живых людей боты. -->
+      <section class="panel-glass p-8 mb-8">
+        <h2 class="text-xl font-bold mb-2">🧪 Тестовый режим</h2>
+        <p class="text-hub-muted text-xs mb-6">
+          Игра с ботами: 3 игрока + ведущий. Свободные места займут боты — они выбирают вопросы,
+          жмут баззер, пишут ответы, ставят на аукционе, рисуют, голосуют и тапают,
+          с задержкой, как живые. Ничего не сохраняется, «пройденные паки» не меняются.
+        </p>
+        <div class="flex flex-col md:flex-row md:items-end gap-4">
+          <label class="flex flex-col gap-2">
+            <span class="text-xs uppercase tracking-widest text-hub-muted font-black">Пак</span>
+            <select v-model="testPack" class="hub-input font-bold min-w-[220px]">
+              <option v-for="p in packs.builtin" :key="p.id" :value="p.id">{{ p.name }}</option>
+              <optgroup v-if="packs.packs.length" label="Мои паки">
+                <option v-for="p in packs.packs" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </optgroup>
+            </select>
+          </label>
+          <label class="flex flex-col gap-2">
+            <span class="text-xs uppercase tracking-widest text-hub-muted font-black">Моё место</span>
+            <select v-model="testSeat" class="hub-input font-bold">
+              <option value="player">Игрок (ведущий — бот)</option>
+              <option value="host">Ведущий (все игроки — боты)</option>
+            </select>
+          </label>
+          <button @click="startTest" :disabled="testing" class="hub-btn-primary flex-1 py-3 uppercase tracking-widest disabled:opacity-50">
+            {{ testing ? 'Запускаем…' : '🤖 Запустить тест с ботами' }}
+          </button>
+        </div>
+        <div class="flex flex-wrap gap-2 mt-4">
+          <button v-for="p in packs.builtin" :key="p.id" @click="copyBuiltin(p)" class="hub-btn text-xs"
+                  title="Создать редактируемую копию встроенного пака в «Моих паках»">
+            ⧉ Скопировать «{{ p.name }}» в мои паки
+          </button>
+        </div>
+        <p v-if="testError" class="text-hub-negative text-sm font-bold mt-4">{{ testError }}</p>
+      </section>
+
       <!-- Мои паки -->
       <section class="panel-glass p-8">
         <div class="flex items-center justify-between mb-6 flex-wrap gap-2">
@@ -108,9 +147,38 @@ const creating = ref(false)
 const error = ref('')
 const editingId = ref(null)
 
+const testPack = ref('builtin:test')
+const testSeat = ref('player')
+const testing = ref(false)
+const testError = ref('')
+
 const shortId = computed(() => platform.me?.accountId ? platform.me.accountId.slice(0, 8) : '')
 
 onMounted(() => { packs.fetchPacks(); packs.fetchPlayedPacks() })
+
+// Тестовый прогон: никого не зовём в звонок (звать некого) и не трогаем звонок хаба —
+// только создаём комнату с ботами и уходим в лобби
+async function startTest() {
+  testing.value = true
+  testError.value = ''
+  try {
+    const code = await store.createTestRoom(testPack.value, testSeat.value)
+    platform.setActivity(code)
+    router.push({ name: 'lobby', params: { id: code } })
+  } catch (e) {
+    testError.value = e.message || 'Не удалось запустить тестовую игру'
+  } finally {
+    testing.value = false
+  }
+}
+
+async function copyBuiltin(p) {
+  try {
+    const copy = await packs.copyBuiltin(p.id)
+    platform.toast(`Создана копия «${copy.name}»`)
+    editingId.value = copy.id
+  } catch (e) { testError.value = e.message }
+}
 
 function copyId() {
   if (platform.me?.accountId) {
